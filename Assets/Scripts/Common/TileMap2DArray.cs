@@ -1,3 +1,6 @@
+
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
 
 public class TileMap2DArray : MonoBehaviour
@@ -10,85 +13,164 @@ public class TileMap2DArray : MonoBehaviour
 
     [Header("Map Sizes")]
     [SerializeField]
-    public int MapWidth;
-    [SerializeField]
-    public int MapHeight;
+    public Vector2Int MapSize;
     [SerializeField]
     public Vector2Int TileSize;
 
     private int m_TextureTilesPerRow;
 
     private Tile[] m_Tiles;
-    private Vector3[] m_Verticies;
-    private Vector2[] m_Uvs;
-    private int[] m_Triangles;
 
     private MeshRenderer m_MeshRenderer;
     private MeshFilter m_MeshFilter;
+
+    private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
     private void Awake()
     {
 #if DEBUG
         UnityEngine.Assertions.Assert.IsNotNull(Material);
 #endif
-        int size = MapWidth * MapHeight;
-        m_Tiles = new Tile[size];
-        m_Verticies = new Vector3[size * 4];
-        m_Uvs = new Vector2[size * 4];
-        m_Triangles = new int[size * 6];
 
-        int x, y, iVertCount = 0, iIndexCount = 0;
-        for (y = 0; y < MapHeight; y++)
-        {
-            for (x = 0; x < MapWidth; x++)
-            {
-                int id = x + y * MapWidth;
-                m_Tiles[id] = new Tile();
-                m_Tiles[id].TileId = 0;
+        m_Watch.Start();
 
-                int xx = x * (int)TileSize.x;
-                int yy = y * (int)TileSize.y;
-                m_Verticies[iVertCount + 0] = new Vector3(xx, yy);
-                m_Verticies[iVertCount + 1] = new Vector3(xx, yy + TileSize.y);
-                m_Verticies[iVertCount + 2] = new Vector3(xx + TileSize.x, yy + TileSize.y);
-                m_Verticies[iVertCount + 3] = new Vector3(xx + TileSize.x, yy);
+        int size = MapSize.x * MapSize.y;
 
-                m_Uvs[iVertCount + 0] = new Vector2(0, 0);
-                m_Uvs[iVertCount + 1] = new Vector2(0, 1);
-                m_Uvs[iVertCount + 2] = new Vector2(1, 1);
-                m_Uvs[iVertCount + 3] = new Vector2(1, 0);
+        //m_Tiles = new Tile[size];
 
-                m_Triangles[iIndexCount + 0] += (iVertCount + 0);
-                m_Triangles[iIndexCount + 1] += (iVertCount + 1);
-                m_Triangles[iIndexCount + 2] += (iVertCount + 2);
-                m_Triangles[iIndexCount + 3] += (iVertCount + 0);
-                m_Triangles[iIndexCount + 4] += (iVertCount + 2);
-                m_Triangles[iIndexCount + 5] += (iVertCount + 3);
-
-                iIndexCount += 6;
-                iVertCount += 4;
-            }
-        }
-
-        m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
         m_MeshFilter = gameObject.AddComponent<MeshFilter>();
-
-        Mesh mesh = new Mesh();
-        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-        mesh.vertices = m_Verticies;
-        mesh.uv = m_Uvs;
-        mesh.triangles = m_Triangles;
-        mesh.RecalculateNormals();
-        m_MeshFilter.mesh = mesh;
-        m_MeshRenderer.material = Material;
+        m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
         m_MeshRenderer.sharedMaterial = Material;
         m_TextureTilesPerRow = Material.mainTexture.width / TextureTileSize.x;
+
+        Mesh mesh = new Mesh {
+            indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
+        };
+
+        NativeArray<Vector3> vertices = new NativeArray<Vector3>(size * 4, Allocator.TempJob);
+        GenVerticiesJob verticiesJob = new GenVerticiesJob {
+            MapSize = MapSize,
+            TileSize = TileSize,
+            Verticies = vertices
+        };
+        var verticesHandle = verticiesJob.Schedule();
+
+        NativeArray<Vector2> uvs = new NativeArray<Vector2>(size * 4, Allocator.TempJob);
+        GenTextureUVJob uvJob = new GenTextureUVJob {
+            MapSize = MapSize,
+            UVs = uvs
+        };
+        var uvHandle = uvJob.Schedule();
+
+        uint seed = (uint)Random.Range(int.MinValue, int.MaxValue);
+        NativeArray<Vector2> terrainUVs = new NativeArray<Vector2>(size * 4, Allocator.TempJob);
+        GenTerrainUVJob terrainJob = new GenTerrainUVJob {
+            Seed = new Unity.Mathematics.Random(seed),
+            MapSize = MapSize,
+            TerrainUVs = terrainUVs
+        };
+        var terrainHandle = terrainJob.Schedule();
+
+        NativeArray<int> triangles = new NativeArray<int>(size * 6, Allocator.TempJob);
+        GenTrianglesJob trianglesJob = new GenTrianglesJob {
+            MapSize = MapSize,
+            Triangles = triangles
+        };
+        var trianglesHandle = trianglesJob.Schedule();
+
+        // Wait for Verticies to Finish
+        verticesHandle.Complete();
+        mesh.vertices = verticiesJob.Verticies.ToArray();
+
+        trianglesHandle.Complete();
+        mesh.triangles = trianglesJob.Triangles.ToArray();
+
+        uvHandle.Complete();
+        mesh.uv = uvJob.UVs.ToArray();
+
+        terrainHandle.Complete();
+        mesh.uv3 = terrainJob.TerrainUVs.ToArray();
+
+        m_MeshFilter.mesh = mesh;
+
+        // end
+        vertices.Dispose();
+        uvs.Dispose();
+        terrainUVs.Dispose();
+        triangles.Dispose();
+
         gameObject.SetActive(true);
+
+        m_Watch.Stop();
+        Debug.Log($"TileMap2DArray took: {m_Watch.ElapsedMilliseconds}ms to Awake()");
+
+        /*          
+                Vector3[] m_Verticies = new Vector3[size * 4];
+                Vector2[] m_Uvs = new Vector2[m_Verticies.Length];
+                Vector2[] m_TerrainType = new Vector2[m_Verticies.Length];
+                int[] m_Triangles = new int[size * 6];
+                int x, y, iVertCount = 0, iIndexCount = 0;
+                for (y = 0; y < MapHeight; y++)
+                {
+                    for (x = 0; x < MapWidth; x++)
+                    {
+                        int id = x + y * MapWidth;
+                        m_Tiles[id] = new Tile();
+                        m_Tiles[id].TileId = 0;
+
+                        int xx = x * (int)TileSize.x;
+                        int yy = y * (int)TileSize.y;
+                        m_Verticies[iVertCount + 0] = new Vector3(xx, yy);
+                        m_Verticies[iVertCount + 1] = new Vector3(xx, yy + TileSize.y);
+                        m_Verticies[iVertCount + 2] = new Vector3(xx + TileSize.x, yy + TileSize.y);
+                        m_Verticies[iVertCount + 3] = new Vector3(xx + TileSize.x, yy);
+
+                        m_Uvs[iVertCount + 0] = new Vector2(0, 0);
+                        m_Uvs[iVertCount + 1] = new Vector2(0, 1);
+                        m_Uvs[iVertCount + 2] = new Vector2(1, 1);
+                        m_Uvs[iVertCount + 3] = new Vector2(1, 0);
+
+                        m_TerrainType[iVertCount + 0] = new Vector2(0, 0);
+                        m_TerrainType[iVertCount + 1] = new Vector2(0, 0);
+                        m_TerrainType[iVertCount + 2] = new Vector2(0, 0);
+                        m_TerrainType[iVertCount + 3] = new Vector2(0, 0);
+
+                        m_Triangles[iIndexCount + 0] += (iVertCount + 0);
+                        m_Triangles[iIndexCount + 1] += (iVertCount + 1);
+                        m_Triangles[iIndexCount + 2] += (iVertCount + 2);
+                        m_Triangles[iIndexCount + 3] += (iVertCount + 0);
+                        m_Triangles[iIndexCount + 4] += (iVertCount + 2);
+                        m_Triangles[iIndexCount + 5] += (iVertCount + 3);
+
+                        iIndexCount += 6;
+                        iVertCount += 4;
+                    }
+                }
+
+                m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
+                m_MeshFilter = gameObject.AddComponent<MeshFilter>();
+
+                mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                mesh.vertices = m_Verticies;
+                mesh.uv = m_Uvs;
+                mesh.SetUVs(2, m_TerrainType);
+                mesh.triangles = m_Triangles;
+                mesh.RecalculateNormals();
+
+                m_MeshFilter.mesh = mesh;
+                m_MeshRenderer.material = Material;
+                m_MeshRenderer.sharedMaterial = Material;
+
+                m_TextureTilesPerRow = Material.mainTexture.width / TextureTileSize.x;
+                gameObject.SetActive(true);*/
     }
 
     void Start()
     {
-        //UpdateMesh();
+        //for (int i = 0; i < MapSize.x * MapSize.y; i++)
+        //{
+          //SetTileTerrain(i, Random.Range(32, 128));
+        //}
     }
 
     void Update()
@@ -98,35 +180,32 @@ public class TileMap2DArray : MonoBehaviour
     public void UpdateMesh()
     {
         int iVertCount = 0;
-        for (int y = 0; y < MapHeight; y++)
+        for (int y = 0; y < MapSize.y; y++)
         {
-            for (int x = 0; x < MapWidth; x++)
+            for (int x = 0; x < MapSize.x; x++)
             {
-                int tileId = m_Tiles[x + y * MapWidth].TileId;
+                int tileId = m_Tiles[x + y * MapSize.x].TileId;
                 var uvs = GetUVRectangleFromPixels(GetUVCoordsOffset(tileId));
-                m_Uvs[iVertCount + 0] = uvs[0];
-                m_Uvs[iVertCount + 1] = uvs[1];
-                m_Uvs[iVertCount + 2] = uvs[2];
-                m_Uvs[iVertCount + 3] = uvs[3];
+                m_MeshFilter.mesh.uv[iVertCount + 0] = uvs[0];
+                m_MeshFilter.mesh.uv[iVertCount + 1] = uvs[1];
+                m_MeshFilter.mesh.uv[iVertCount + 2] = uvs[2];
+                m_MeshFilter.mesh.uv[iVertCount + 3] = uvs[3];
                 iVertCount += 4;
             }
         }
-        m_MeshFilter.mesh.uv = m_Uvs;
     }
 
 
     public void SetUVCoords(int tile, int texTileId)
     {
         Vector2[] uvArray = GetUVRectangleFromPixels(GetUVCoords(texTileId));
-        ApplyUVToUVArray(tile, uvArray, m_Uvs);
-        m_MeshFilter.mesh.uv = m_Uvs;
+        ApplyUVToUVArray(tile, uvArray);
     }
 
     public void SetUVCoords(int tile, int texTileX, int texTileY)
     {
         Vector2[] uvArray = GetUVRectangleFromPixels(GetUVCoords(texTileX, texTileY));
-        ApplyUVToUVArray(tile, uvArray, m_Uvs);
-        m_MeshFilter.mesh.uv = m_Uvs;
+        ApplyUVToUVArray(tile, uvArray);
     }
 
     public RectInt GetUVCoords(int tileId)
@@ -184,12 +263,142 @@ public class TileMap2DArray : MonoBehaviour
         return new Vector2((float)x / (float)Material.mainTexture.width, (float)y / (float)Material.mainTexture.height);
     }
 
-    private void ApplyUVToUVArray(int tile, Vector2[] uv, in Vector2[] meshUV)
+    private void ApplyUVToUVArray(int tile, Vector2[] uv)
     {
         int offset = tile * 4;
-        meshUV[offset] = uv[0];
-        meshUV[offset + 1] = uv[1];
-        meshUV[offset + 2] = uv[2];
-        meshUV[offset + 3] = uv[3];
+        m_MeshFilter.mesh.uv[offset + 0] = uv[0];
+        m_MeshFilter.mesh.uv[offset + 1] = uv[1];
+        m_MeshFilter.mesh.uv[offset + 2] = uv[2];
+        m_MeshFilter.mesh.uv[offset + 3] = uv[3];
+    }
+
+    public void SetTileTerrain(int tile, float terrainId)
+    {
+        ApplyTerrainUVArray(tile, new Vector2[] { new Vector2(terrainId, 0), new Vector2(terrainId, 0), new Vector2(terrainId, 0), new Vector2(terrainId, 0) });
+    }
+
+    private void ApplyTerrainUVArray(int tile, Vector2[] terrainTypes)
+    {
+        int offset = tile * 4;
+        Vector2[] uv3 = m_MeshFilter.mesh.uv3;
+        uv3[offset + 0] = terrainTypes[0];
+        uv3[offset + 1] = terrainTypes[1];
+        uv3[offset + 2] = terrainTypes[2];
+        uv3[offset + 3] = terrainTypes[3];
+        m_MeshFilter.mesh.uv3 = uv3;
+    }
+}
+
+public struct GenTextureUVJob : IJob
+{
+    [ReadOnly] public Vector2Int MapSize;
+    public NativeArray<Vector2> UVs;
+
+    public void Execute()
+    {
+        int iVertCount = 0;
+        for (int y = 0; y < MapSize.y; y++)
+        {
+            for (int x = 0; x < MapSize.x; x++)
+            {
+                UVs[iVertCount + 0] = new Vector2(0, 0);
+                UVs[iVertCount + 1] = new Vector2(0, 1);
+                UVs[iVertCount + 2] = new Vector2(1, 1);
+                UVs[iVertCount + 3] = new Vector2(1, 0);
+                iVertCount += 4;
+            }
+        }
+    }
+}
+
+public struct GenTerrainUVJob : IJob
+{
+    [ReadOnly] public Unity.Mathematics.Random Seed;
+    [ReadOnly] public Vector2Int MapSize;
+    public NativeArray<Vector2> TerrainUVs;
+
+    public void Execute()
+    {
+        int iVertCount = 0;
+        for (int y = 0; y < MapSize.y; y++)
+        {
+            for (int x = 0; x < MapSize.x; x++)
+            {
+                int terrain = Seed.NextInt(32, 256);
+                TerrainUVs[iVertCount + 0] = new Vector2(terrain, 0);
+                TerrainUVs[iVertCount + 1] = new Vector2(terrain, 0);
+                TerrainUVs[iVertCount + 2] = new Vector2(terrain, 0);
+                TerrainUVs[iVertCount + 3] = new Vector2(terrain, 0);
+                //TerrainUVs[iVertCount + 0] = new Vector2(0, 0);
+                //TerrainUVs[iVertCount + 1] = new Vector2(0, 0);
+                //TerrainUVs[iVertCount + 2] = new Vector2(0, 0);
+                //TerrainUVs[iVertCount + 3] = new Vector2(0, 0);
+                iVertCount += 4;
+            }
+        }
+    }
+}
+
+public struct GenTrianglesJob : IJob
+{
+    [ReadOnly] public Vector2Int MapSize;
+    public NativeArray<int> Triangles;
+
+    public void Execute()
+    {
+        int iVertCount = 0, iIndexCount = 0;
+        for (int y = 0; y < MapSize.y; y++)
+        {
+            for (int x = 0; x < MapSize.x; x++)
+            {
+                Triangles[iIndexCount + 0] += (iVertCount + 0);
+                Triangles[iIndexCount + 1] += (iVertCount + 1);
+                Triangles[iIndexCount + 2] += (iVertCount + 2);
+                Triangles[iIndexCount + 3] += (iVertCount + 0);
+                Triangles[iIndexCount + 4] += (iVertCount + 2);
+                Triangles[iIndexCount + 5] += (iVertCount + 3);
+                iVertCount += 4;
+                iIndexCount += 6;
+            }
+        }
+    }
+}
+
+public struct GenTilesjob : IJob
+{
+    [ReadOnly] public int Size;
+    public Tile[] Tiles;
+
+    public void Execute()
+    {
+        for (int i = 0; i < Size; i++)
+        {
+            Tiles[i] = new Tile();
+        }
+    }
+}
+
+public struct GenVerticiesJob : IJob
+{
+    [ReadOnly] public Vector2Int MapSize;
+    [ReadOnly] public Vector2Int TileSize;
+    public NativeArray<Vector3> Verticies;
+
+    public void Execute()
+    {
+        int x, y, iVertCount = 0;
+        for (y = 0; y < MapSize.y; y++)
+        {
+            for (x = 0; x < MapSize.x; x++)
+            {
+                int xx = x * TileSize.x;
+                int yy = y * TileSize.y;
+                Verticies[iVertCount + 0] = new Vector3(xx, yy);
+                Verticies[iVertCount + 1] = new Vector3(xx, yy + TileSize.y);
+                Verticies[iVertCount + 2] = new Vector3(xx + TileSize.x, yy + TileSize.y);
+                Verticies[iVertCount + 3] = new Vector3(xx + TileSize.x, yy);
+                iVertCount += 4;
+            }
+        }
     }
 }
