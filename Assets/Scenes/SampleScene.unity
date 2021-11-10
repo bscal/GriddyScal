@@ -635,7 +635,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 07723997aab1a51468248dcd6e711a3f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Material: {fileID: 2100000, guid: 6ea3e017433744649af146d3f43c2ab8, type: 2}
+  Material: {fileID: 2100000, guid: 2f717a0519580a544be0a8fd66994c7c, type: 2}
   TextureTileSize: {x: 16, y: 16}
   MapSize: {x: 128, y: 128}
   TileSize: {x: 1, y: 1}

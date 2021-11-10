@@ -1,4 +1,4 @@
-Shader "Custom/SurfaceTerrain"
+Shader "Surface/Terrain"
 {
 	Properties
 	{
@@ -27,7 +27,7 @@ Shader "Custom/SurfaceTerrain"
 			{
 				float2 uv_MainTex;
 				float4 color : COLOR;
-				float2 terrain; // TODO convert mainTex to vec3 and add terrain as z?
+				float terrain; // TODO convert mainTex to vec3 and add terrain as z?
 			};
 
 			half _Glossiness;
@@ -44,14 +44,14 @@ Shader "Custom/SurfaceTerrain"
 			void vert(inout appdata_full v, out Input data)
 			{
 				UNITY_INITIALIZE_OUTPUT(Input, data);
-				data.terrain = v.texcoord2.xy;
+				data.terrain = v.texcoord.z;
 			}
 
 			void surf(Input IN, inout SurfaceOutputStandard o)
 			{
 				// Produces a good texture resolution when fully zoomed
 				//float2 uv = IN.worldPos.xy;
-				fixed4 c = UNITY_SAMPLE_TEX2DARRAY(_MainTex, float3(IN.uv_MainTex, IN.terrain.x));
+				fixed4 c = UNITY_SAMPLE_TEX2DARRAY(_MainTex, float3(IN.uv_MainTex, IN.terrain));
 				o.Albedo = c.rgb * _Color;
 				o.Metallic = _Metallic;
 				o.Smoothness = _Glossiness;
