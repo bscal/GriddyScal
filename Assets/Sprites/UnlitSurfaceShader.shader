@@ -25,6 +25,7 @@ Shader "Unlit/Terrain"
 			{
 				float4 vertex : POSITION;
 				float3 uv : TEXCOORD0;
+				float4 color : TEXCOORD1;
 			};
 
 			struct v2f
@@ -32,6 +33,7 @@ Shader "Unlit/Terrain"
 				float3 uv : TEXCOORD0;
 				UNITY_FOG_COORDS(1)
 				float4 vertex : SV_POSITION;
+				float4 color : TEXCOORD1;
 			};
 
 			UNITY_DECLARE_TEX2DARRAY(_MainTex);
@@ -45,12 +47,13 @@ Shader "Unlit/Terrain"
 				o.vertex = UnityObjectToClipPos(v.vertex);
 				o.uv = v.uv
 				UNITY_TRANSFER_FOG(o,o.vertex);
+				o.color = v.color;
 				return o;
 			}
 
 			fixed4 frag(v2f i) : SV_Target
 			{
-				fixed4 col = UNITY_SAMPLE_TEX2DARRAY(_MainTex, i.uv) * _Color;
+				fixed4 col = UNITY_SAMPLE_TEX2DARRAY(_MainTex, i.uv) * _Color * i.color;
 				// apply fog
 				UNITY_APPLY_FOG(i.fogCoord, col);
 				return col;

@@ -1,0 +1,30 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+struct Fluid
+{
+    int N;
+    float visc;
+    float diff;
+    float dt;
+};
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Fluid f;
+
+    int size = f.N;
+    float Vx[1];
+    float Vx0[1];
+    float Vy[1];
+    float Vy0[1];
+    float s[1];
+    float d[1];
+
+    Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}
