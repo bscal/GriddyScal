@@ -1,23 +1,10 @@
 ﻿using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Common.FluidSimulation
 {
-    public struct Fluid
-    {
-        int N;
-        float visc;
-        float diff;
-        float dt;
-        float[] Vx;
-        float[] Vx0;
-        float[] Vy;
-        float[] Vy0;
-
-        float[] s;
-        float[] d;
-    }
 
     [RequireComponent(typeof(TileMap2DArray))]
     public class FluidSimTileMap : MonoBehaviour
@@ -25,10 +12,8 @@ namespace Common.FluidSimulation
 
         public TileMap2DArray TileMap;
 
-        Fluid Fluid;
-
         int N;
-        int iterations = 1;
+        int iterations = 4;
         float visc = 0.0000001f;
         float diff = 0;
         float dt = 0.2f;
@@ -40,26 +25,54 @@ namespace Common.FluidSimulation
         float[] s;
         float[] d;
 
-        int w;
-        int w0;
+        bool clicked;
 
         private void Start()
         {
-            N = (TileMap.MapSize.x) * (TileMap.MapSize.y);
-            Vx = new float[N];
-            Vx0 = new float[N];
-            Vy = new float[N];
-            Vy0 = new float[N];
-            s = new float[N];
-            d = new float[N];
-            w = TileMap.MapSize.x;
-            w0 = TileMap.MapSize.x - 1;
+            N = TileMap.MapSize.x;
+            Vx = new float[N * N];
+            Vx0 = new float[N * N];
+            Vy = new float[N * N];
+            Vy0 = new float[N * N];
+            s = new float[N * N];
+            d = new float[N * N];
+
+            for (int j = 1; j < N - 1; j++)
+            {
+                for (int i = 1; i < N - 1; i++)
+                {
+                    int id = IX(j, i);
+                    d[id] = Random.Range(0, 100);
+                    //Vx[id] = Random.Range(-1f, 1f);
+                    //Vy[id] = Random.Range(-1, 1f);
+                }
+            }
         }
 
-        int IX(int j, int i) => Mathf.Clamp(j, 0, w0) + Mathf.Clamp(i, 0, w0) * w;
+        int IX(int j, int i) => Mathf.Clamp(j, 0, TileMap.MapSize.x - 1) + Mathf.Clamp(i, 0, TileMap.MapSize.x - 1) * TileMap.MapSize.x;
 
         void Update()
         {
+            if (Mouse.current.leftButton.IsPressed())
+            {
+                if (clicked == false)
+                {
+                    clicked = true;
+                    Debug.Log("CLICKED");
+                    int rand = Random.Range(0, N * N);
+                    d[rand] = 255;
+                    Vx[rand] = Random.Range(-1f, 1f);
+                    Vy[rand] = Random.Range(-1, 1f);
+                }
+            }
+            else
+                clicked = false;
+
+            //int id = IX(1, 40);
+            //d[id] = 255;
+            //Vx[id] = 1f;
+            //Vy[id] = Random.Range(-1, 1f);
+
             Diffuse(1, Vx0, Vx, visc, dt);
             Diffuse(2, Vy0, Vy, visc, dt);
 
@@ -78,17 +91,15 @@ namespace Common.FluidSimulation
 
         private void SetColors()
         {
-            int x = 0, y = 0;
             var colors = TileMap.GetTileColor();
             for (int j = 1; j < N - 1; j++)
             {
                 for (int i = 1; i < N - 1; i++)
                 {
-                    Color c = Color.Lerp(Color.white, Color.blue, d[IX(j, i)]);
-                    TileMap.SetColor(IX(j, i), c, colors);
-                    x++;
+                    int id = IX(j, i);
+                    Color c = Color.LerpUnclamped(Color.white, Color.blue, d[id] / 255f);
+                    TileMap.SetColor(id, c, colors);
                 }
-                y++;
             }
             TileMap.SetTileColor(colors);
         }
@@ -226,23 +237,5 @@ namespace Common.FluidSimulation
             x[IX(N - 1, 0)] = 0.5f * (x[IX(N - 2, 0)] + x[IX(N - 1, 1)]);
             x[IX(N - 1, N - 1)] = 0.5f * (x[IX(N - 2, N - 1)] + x[IX(N - 1, N - 2)]);
         }
-
-        public struct DiffuseJob : IJob
-        {
-            int N;
-            int iters;
-            int b;
-            NativeArray<float> x;
-            NativeArray<float> x0;
-            float diff;
-            float dt;
-
-            public void Execute()
-            {
-            }
-        }
-
     }
-
-
 }

@@ -644,7 +644,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Material: {fileID: 2100000, guid: 89fafb4afc1452945b279078d2db4183, type: 2}
   TextureTileSize: {x: 16, y: 16}
-  MapSize: {x: 16, y: 16}
+  MapSize: {x: 80, y: 80}
   TileSize: {x: 1, y: 1}
 --- !u!4 &1677978376
 Transform:
