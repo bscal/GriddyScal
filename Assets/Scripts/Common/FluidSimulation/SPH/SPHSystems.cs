@@ -1,5 +1,4 @@
-﻿using System.IO;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -18,6 +17,8 @@ using UnityEngine;
 /// I "think" what I did was change the Delta Time to be too fast? I kept running into issues with pretty much every iteration i tried where
 /// collisions causes particles to basically explode into insane speeds. I am not 100% sure but turning the dt up in this version gave me a very 
 /// similiar result.
+/// 
+/// Uses GameObject prefab converted to Entity to display particles
 /// </summary>
 
 [DisableAutoCreation]
@@ -27,72 +28,62 @@ public class SPHSystem : SystemBase
 
     public int dimensions = 50;
     public int numberOfParticles = 10000;
-    // Optimisation rule of thumb: (numberOfParticles^(1/3)) * 0.8
-    public int maximumParticlesPerCell = 18;
+    public int maximumParticlesPerCell = 18; // Optimisation rule of thumb: (numberOfParticles^(1/3)) * 0.8
     public float mass = 1f;
     public float gasConstant = 2000.0f;
     public float restDensity = 2f;
     public float viscosityCoefficient = 0.25f;
-    public Vector3 gravity = new Vector3(0.0f, -9.81f, 0.0f);
+    public float3 gravity = new(0.0f, -9.81f, 0.0f);
     public float damping = -0.5f;
     public float dt = 0.0008f;
-
-    private NativeArray<Particle> _particles;
-    public NativeMultiHashMap<int, int> _hashGrid;
-    public NativeArray<int> _neighbourTracker;
-    public NativeArray<int> _neighbourList; // Stores all neighbours of a particle aligned at 'particleIndex * maximumParticlesPerCell * 8'
-    public NativeArray<float> densities;
-    public NativeArray<float> pressures;
-    public NativeArray<Vector3> forces;
-    public NativeArray<Vector3> velocities;
 
     public Mesh particleMesh;
     public float particleRenderSize = 40f;
     public Material material;
-    public float radius2;
-    public float radius3;
-    public float radius4;
-    public float radius5;
-    public float mass2;
+
+    [Tooltip("The absolute accumulated simulation steps")]
+    public int elapsedSimulationSteps;
+
+    private NativeArray<Particle> m_Particles;
+    private NativeMultiHashMap<int, int> m_HashGrid;
+    private NativeArray<int> m_NeighbourTracker;
+    private NativeArray<int> m_NeighbourList; // Stores all neighbours of a particle aligned at 'particleIndex * maximumParticlesPerCell * 8'
+    private NativeArray<float> m_Densities;
+    private NativeArray<float> m_Pressures;
+    private NativeArray<float3> m_Forces;
+    private NativeArray<float3> m_Velocities;
+
+    private float m_Radius2;
+    private float m_Radius3;
+    private float m_Radius4;
+    private float m_Radius5;
+    private float m_Mass2;
 
     private ComputeBuffer _particleColorPositionBuffer;
     private ComputeBuffer _argsBuffer;
     private static readonly int SizeProperty = Shader.PropertyToID("_size");
     private static readonly int ParticlesBufferProperty = Shader.PropertyToID("_particlesBuffer");
 
-    [Tooltip("The absolute accumulated simulation steps")]
-    public int elapsedSimulationSteps;
+    private readonly int m_BatchCount = 1;
 
-    private int batchCount = 256;
-
-    // ReSharper restore MemberCanBePrivate.Global
-    // ReSharper restore InconsistentNaming
-
-    private EntityQuery m_Query;
-
-    [StructLayout(LayoutKind.Sequential, Size = 28)]
+    [StructLayout(LayoutKind.Sequential, Size = sizeof(float) * 3 + sizeof(float) * 4)]
     private struct Particle : IComponentData
     {
-        public Vector3 Position;
-        public Vector4 Color;
+        public float3 Position;
+        public float4 Color;
     }
 
     protected override void OnCreate()
     {
-        m_Query = this.GetEntityQuery(typeof(Particle), typeof(Translation));
-        RequireForUpdate(m_Query);
-
         Application.targetFrameRate = -1;
         //var stuff = EntityManager.GetSharedComponentData<RenderMesh>(GetSingletonEntity<ParticlePrefabTag>());
         //particleMesh = stuff.mesh;
         //material = stuff.material;
-        radius2 = radius * radius;
-        radius3 = radius2 * radius;
-        radius4 = radius3 * radius;
-        radius5 = radius4 * radius;
-        mass2 = mass * mass;
-
-        this.
+        m_Radius2 = radius * radius;
+        m_Radius3 = m_Radius2 * radius;
+        m_Radius4 = m_Radius3 * radius;
+        m_Radius5 = m_Radius4 * radius;
+        m_Mass2 = mass * mass;
 
         RespawnParticles();
         InitNeighbourHashing();
@@ -101,42 +92,41 @@ public class SPHSystem : SystemBase
 
     protected override void OnStopRunning()
     {
-        //EntityManager.CompleteAllJobs();
-
-        //ReleaseNative();
+        EntityManager.CompleteAllJobs();
+        ReleaseNative();
     }
 
     private void ReleaseNative()
     {
-        _particles.Dispose();
-        _hashGrid.Dispose();
-        _neighbourList.Dispose();
-        _neighbourTracker.Dispose();
-        densities.Dispose();
-        pressures.Dispose();
-        forces.Dispose();
-        velocities.Dispose();
+        //_particles.Dispose();
+        m_HashGrid.Dispose();
+        m_NeighbourList.Dispose();
+        m_NeighbourTracker.Dispose();
+        m_Densities.Dispose();
+        m_Pressures.Dispose();
+        m_Forces.Dispose();
+        m_Velocities.Dispose();
 
-        _particleColorPositionBuffer.Dispose();
-        _argsBuffer.Dispose();
+        //_particleColorPositionBuffer.Dispose();
+        //_argsBuffer.Dispose();
     }
 
     #region Initialisation
     private void RespawnParticles()
     {
         //_particles = new NativeArray<Particle>(numberOfParticles, Allocator.Persistent);
-        densities = new NativeArray<float>(numberOfParticles, Allocator.Persistent);
-        pressures = new NativeArray<float>(numberOfParticles, Allocator.Persistent);
-        forces = new NativeArray<Vector3>(numberOfParticles, Allocator.Persistent);
-        velocities = new NativeArray<Vector3>(numberOfParticles, Allocator.Persistent);
+        m_Densities = new NativeArray<float>(numberOfParticles, Allocator.Persistent);
+        m_Pressures = new NativeArray<float>(numberOfParticles, Allocator.Persistent);
+        m_Forces = new NativeArray<float3>(numberOfParticles, Allocator.Persistent);
+        m_Velocities = new NativeArray<float3>(numberOfParticles, Allocator.Persistent);
 
-        int particlesPerDimension = Mathf.CeilToInt(Mathf.Pow(numberOfParticles, 1f / 3f));
+        int particlesPerDimension = (int)math.ceil(math.pow(numberOfParticles, 1f / 3f));
 
         EntityManager eManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        //NativeArray<Entity> entities = new(ParticleCount, Allocator.Persistent);
+
         // convertion
-        BlobAssetStore blobAssetStore = new BlobAssetStore();
-        Entity m_PrefabEntity = GameObjectConversionUtility.ConvertGameObjectHierarchy(SPHParticleObject.ParticlePrefab,
+        BlobAssetStore blobAssetStore = new();
+        Entity m_PrefabEntity = GameObjectConversionUtility.ConvertGameObjectHierarchy(SPHSystemController.ParticlePrefab,
             GameObjectConversionSettings.FromWorld(eManager.World, blobAssetStore));
         blobAssetStore.Dispose();
 
@@ -149,18 +139,18 @@ public class SPHSystem : SystemBase
                 for (int y = 0; y < particlesPerDimension; y++)
                     for (int z = 0; z < particlesPerDimension; z++)
                     {
-                        Vector3 startPos = new Vector3(dimensions - 1, dimensions - 1, dimensions - 1) - new Vector3(x / 2f, y / 2f, z / 2f)  /*- new Vector3(Random.Range(0f, 0.01f), Random.Range(0f, 0.01f), Random.Range(0f, 0.01f))*/;
+                        float3 startPos = new float3(dimensions - 1, dimensions - 1, dimensions - 1) - new float3(x / 2f, y / 2f, z / 2f)  /*- new Vector3(Random.Range(0f, 0.01f), Random.Range(0f, 0.01f), Random.Range(0f, 0.01f))*/;
                         Entity ent = eManager.Instantiate(m_PrefabEntity);
-                        Particle particle = new Particle() {
+                        eManager.SetComponentData(ent, new Particle()
+                        {
                             Position = startPos,
-                            Color = Color.white
-                        };
-                        eManager.SetComponentData(ent, particle);
+                            Color = new float4(1, 1, 1, 1)
+                        });
                         // _particles[counter] = particle;
-                        densities[counter] = -1f;
-                        pressures[counter] = 0.0f;
-                        forces[counter] = Vector3.zero;
-                        velocities[counter] = Vector3.zero;
+                        m_Densities[counter] = -1f;
+                        m_Pressures[counter] = 0.0f;
+                        m_Forces[counter] = float3.zero;
+                        m_Velocities[counter] = float3.zero;
                         if (++counter == numberOfParticles)
                         {
                             return;
@@ -172,11 +162,11 @@ public class SPHSystem : SystemBase
 
     private void InitNeighbourHashing()
     {
-        _neighbourList = new NativeArray<int>(numberOfParticles * maximumParticlesPerCell * 8, Allocator.Persistent); // 8 because we consider 8 cells
-        _neighbourTracker = new NativeArray<int>(numberOfParticles, Allocator.Persistent);
+        m_NeighbourList = new NativeArray<int>(numberOfParticles * maximumParticlesPerCell * 8, Allocator.Persistent); // 8 because we consider 8 cells
+        m_NeighbourTracker = new NativeArray<int>(numberOfParticles, Allocator.Persistent);
         SpatialHashing.CellSize = radius * 2; // Setting cell-size h to particle diameter.
         SpatialHashing.Dimensions = dimensions;
-        _hashGrid = new NativeMultiHashMap<int, int>(numberOfParticles, Allocator.Persistent);
+        m_HashGrid = new NativeMultiHashMap<int, int>(numberOfParticles, Allocator.Persistent);
     }
 
     void InitComputeBuffers()
@@ -192,7 +182,7 @@ public class SPHSystem : SystemBase
         _argsBuffer.SetData(args);
 
         _particleColorPositionBuffer = new ComputeBuffer(numberOfParticles, sizeof(float) * (3 + 4));
-        _particleColorPositionBuffer.SetData(_particles);
+        _particleColorPositionBuffer.SetData(m_Particles);
     }
 
     #endregion
@@ -239,7 +229,7 @@ public class SPHSystem : SystemBase
                 foreach (var potentialNeighbour in neighbourCell)
                 {
                     if (potentialNeighbour == index) continue;
-                    if ((particles[potentialNeighbour].Position - particles[index].Position).sqrMagnitude < radiusSquared) // Using squared length instead of magnitude for performance
+                    if (math.distancesq(particles[potentialNeighbour].Position, particles[index].Position) < radiusSquared) // Using squared length instead of magnitude for performance
                     {
                         neighbourList[index * maximumParticlesPerCell * 8 + neighbourTracker[index]++] = potentialNeighbour;
                         if (++counter == maximumParticlesPerCell) break;    // Prevent potential UB in neighbourList by only allowing maximumParticlesPerCell neighbours from one cell.
@@ -248,7 +238,7 @@ public class SPHSystem : SystemBase
             }
         }
 
-        private NativeArray<int> GetNearbyKeys(Vector3Int originIndex, Vector3 position)
+        private NativeArray<int> GetNearbyKeys(int3 originIndex, float3 position)
         {
             NativeArray<int> nearbyBucketIndicesX = new NativeArray<int>(8, Allocator.Temp);
             NativeArray<int> nearbyBucketIndicesY = new NativeArray<int>(8, Allocator.Temp);
@@ -308,7 +298,7 @@ public class SPHSystem : SystemBase
             NativeArray<int> nearbyKeys = new NativeArray<int>(8, Allocator.Temp);
             for (int i = 0; i < 8; i++)
             {
-                nearbyKeys[i] = SpatialHashing.Hash(new Vector3Int(nearbyBucketIndicesX[i], nearbyBucketIndicesY[i], nearbyBucketIndicesZ[i]), dimensions);
+                nearbyKeys[i] = SpatialHashing.Hash(new int3(nearbyBucketIndicesX[i], nearbyBucketIndicesY[i], nearbyBucketIndicesZ[i]), dimensions);
             }
 
             return nearbyKeys;
@@ -335,12 +325,12 @@ public class SPHSystem : SystemBase
         {
             // Doyub Kim 121, 122, 123
             // 5. Compute densities
-            Vector3 origin = particles[index].Position;
+            float3 origin = particles[index].Position;
             float sum = 0f;
             for (int j = 0; j < neighbourTracker[index]; j++)
             {
                 int neighbourIndex = neighbourList[index * maximumParticlesPerCell * 8 + j];
-                float distanceSquared = (origin - particles[neighbourIndex].Position).sqrMagnitude;
+                float distanceSquared = math.distancesq(origin, particles[neighbourIndex].Position);
                 sum += StdKernel(distanceSquared);
             }
 
@@ -355,7 +345,7 @@ public class SPHSystem : SystemBase
         {
             // Doyub Kim
             float x = 1.0f - distanceSquared / radius2;
-            return 315f / (64f * Mathf.PI * radius3) * x * x * x;
+            return 315f / (64f * math.PI * radius3) * x * x * x;
         }
     }
 
@@ -365,27 +355,27 @@ public class SPHSystem : SystemBase
         [ReadOnly] public NativeArray<int> neighbourTracker;
         [ReadOnly] public NativeArray<int> neighbourList; // Stores all neighbours of a particle aligned at 'particleIndex * maximumParticlesPerCell * 8'
         [ReadOnly] public NativeArray<Particle> particles;
-        [NativeDisableParallelForRestriction] public NativeArray<Vector3> forces;
-        [ReadOnly] public NativeArray<Vector3> velocities;
+        [NativeDisableParallelForRestriction] public NativeArray<float3> forces;
+        [ReadOnly] public NativeArray<float3> velocities;
         [ReadOnly] public NativeArray<float> densities;
         [ReadOnly] public NativeArray<float> pressures;
 
         [ReadOnly] public float mass2;
         [ReadOnly] public int maximumParticlesPerCell;
         [ReadOnly] public float viscosityCoefficient;
-        [ReadOnly] public Vector3 gravity;
+        [ReadOnly] public float3 gravity;
         [ReadOnly] public float radius;
         [ReadOnly] public float radius4;
         [ReadOnly] public float radius5;
 
         public void Execute(int index)
         {
-            forces[index] = Vector3.zero;
+            forces[index] = float3.zero;
             var particleDensity2 = densities[index] * densities[index];
             for (int j = 0; j < neighbourTracker[index]; j++)
             {
                 int neighbourIndex = neighbourList[index * maximumParticlesPerCell * 8 + j];
-                float distance = (particles[index].Position - particles[neighbourIndex].Position).magnitude;
+                float distance = math.distance(particles[index].Position, particles[neighbourIndex].Position);
                 if (distance > 0.0f)
                 {
                     var direction = (particles[index].Position - particles[neighbourIndex].Position) / distance;
@@ -404,7 +394,7 @@ public class SPHSystem : SystemBase
         private float SpikyKernelFirstDerivative(float distance)
         {
             float x = 1.0f - distance / radius;
-            return -45.0f / (Mathf.PI * radius4) * x * x;
+            return -45.0f / (math.PI * radius4) * x * x;
         }
 
         // Doyub Kim page 130
@@ -412,11 +402,11 @@ public class SPHSystem : SystemBase
         {
             // Btw, it derives 'distance' not 'radius' (h)
             float x = 1.0f - distance / radius;
-            return 90f / (Mathf.PI * radius5) * x;
+            return 90f / (math.PI * radius5) * x;
         }
 
         // // Doyub Kim page 130
-        private Vector3 SpikyKernelGradient(float distance, Vector3 directionFromCenter)
+        private float3 SpikyKernelGradient(float distance, float3 directionFromCenter)
         {
             return SpikyKernelFirstDerivative(distance) * directionFromCenter;
         }
@@ -426,8 +416,8 @@ public class SPHSystem : SystemBase
     private struct Integrate : IJobParallelFor
     {
         [NativeDisableParallelForRestriction] public NativeArray<Particle> particles;
-        [ReadOnly] public NativeArray<Vector3> forces;
-        [NativeDisableParallelForRestriction] public NativeArray<Vector3> velocities;
+        [ReadOnly] public NativeArray<float3> forces;
+        [NativeDisableParallelForRestriction] public NativeArray<float3> velocities;
 
         [ReadOnly] public float mass;
         [ReadOnly] public float damping;
@@ -486,81 +476,86 @@ public class SPHSystem : SystemBase
 
     protected override void OnUpdate()
     {
-        _particles = this.GetEntityQuery(typeof(Particle)).ToComponentDataArray<Particle>(Allocator.Persistent);
+        m_Particles = this.GetEntityQuery(typeof(Particle)).ToComponentDataArray<Particle>(Allocator.Persistent);
         // Calculate hash of all particles and build neighboring list.
         // 1. Clear HashGrid
-        _hashGrid.Clear();
+        m_HashGrid.Clear();
         // 2. Recalculate hashes of each particle.
-        RecalculateHashGrid recalculateHashGridJob = new RecalculateHashGrid {
-            particles = _particles,
-            hashGrid = _hashGrid.AsParallelWriter(),
+        RecalculateHashGrid recalculateHashGridJob = new RecalculateHashGrid
+        {
+            particles = m_Particles,
+            hashGrid = m_HashGrid.AsParallelWriter(),
             dimensions = SpatialHashing.Dimensions,
             cellSize = SpatialHashing.CellSize
         };
-        JobHandle fillHashGridJobHandle = recalculateHashGridJob.Schedule(numberOfParticles, batchCount);
+        JobHandle fillHashGridJobHandle = recalculateHashGridJob.Schedule(numberOfParticles, m_BatchCount);
         fillHashGridJobHandle.Complete();
         // 3. For each particle go through all their 8 neighbouring cells.
         //    Check each particle in those neighbouring cells for interference radius r and store the interfering ones inside the particles neighbour list.
-        BuildNeighbourList buildNeighbourListJob = new BuildNeighbourList {
-            particles = _particles,
-            hashGrid = _hashGrid,
+        BuildNeighbourList buildNeighbourListJob = new BuildNeighbourList
+        {
+            particles = m_Particles,
+            hashGrid = m_HashGrid,
             dimensions = SpatialHashing.Dimensions,
             cellSize = SpatialHashing.CellSize,
             radiusSquared = radius * radius,
             maximumParticlesPerCell = maximumParticlesPerCell,
-            neighbourList = _neighbourList,
-            neighbourTracker = _neighbourTracker
+            neighbourList = m_NeighbourList,
+            neighbourTracker = m_NeighbourTracker
         };
-        JobHandle buildNeighbourListJobHandle = buildNeighbourListJob.Schedule(numberOfParticles, batchCount);
+        JobHandle buildNeighbourListJobHandle = buildNeighbourListJob.Schedule(numberOfParticles, m_BatchCount);
         buildNeighbourListJobHandle.Complete();
         // 4. The Neighbouring-list should be n-particles big, each index containing a list of each particles neighbours in radius r.
 
         // 5. Compute density pressure
-        ComputeDensityPressure computeDensityPressureJob = new ComputeDensityPressure {
-            neighbourTracker = _neighbourTracker,
-            neighbourList = _neighbourList,
-            particles = _particles,
-            densities = densities,
-            pressures = pressures,
+        ComputeDensityPressure computeDensityPressureJob = new ComputeDensityPressure
+        {
+            neighbourTracker = m_NeighbourTracker,
+            neighbourList = m_NeighbourList,
+            particles = m_Particles,
+            densities = m_Densities,
+            pressures = m_Pressures,
             mass = mass,
             gasConstant = gasConstant,
             restDensity = restDensity,
             maximumParticlesPerCell = maximumParticlesPerCell,
-            radius2 = radius2,
-            radius3 = radius3
+            radius2 = m_Radius2,
+            radius3 = m_Radius3
         };
-        JobHandle computeDensityPressureJobHandle = computeDensityPressureJob.Schedule(numberOfParticles, batchCount);
+        JobHandle computeDensityPressureJobHandle = computeDensityPressureJob.Schedule(numberOfParticles, m_BatchCount);
         computeDensityPressureJobHandle.Complete();
 
-        ComputeForces computeForcesJob = new ComputeForces {
-            neighbourTracker = _neighbourTracker,
-            neighbourList = _neighbourList,
-            particles = _particles,
-            forces = forces,
-            velocities = velocities,
-            densities = densities,
-            pressures = pressures,
-            mass2 = mass2,
+        ComputeForces computeForcesJob = new ComputeForces
+        {
+            neighbourTracker = m_NeighbourTracker,
+            neighbourList = m_NeighbourList,
+            particles = m_Particles,
+            forces = m_Forces,
+            velocities = m_Velocities,
+            densities = m_Densities,
+            pressures = m_Pressures,
+            mass2 = m_Mass2,
             maximumParticlesPerCell = maximumParticlesPerCell,
             viscosityCoefficient = viscosityCoefficient,
             gravity = gravity,
             radius = radius,
-            radius4 = radius4,
-            radius5 = radius5
+            radius4 = m_Radius4,
+            radius5 = m_Radius5
         };
-        JobHandle computeForcesJobHandle = computeForcesJob.Schedule(numberOfParticles, batchCount);
+        JobHandle computeForcesJobHandle = computeForcesJob.Schedule(numberOfParticles, m_BatchCount);
         computeForcesJobHandle.Complete();
 
-        Integrate integrateJob = new Integrate {
-            particles = _particles,
-            forces = forces,
-            velocities = velocities,
+        Integrate integrateJob = new Integrate
+        {
+            particles = m_Particles,
+            forces = m_Forces,
+            velocities = m_Velocities,
             mass = mass,
             damping = damping,
             dt = dt,
             dimensions = dimensions
         };
-        JobHandle integrateJobHandle = integrateJob.Schedule(numberOfParticles, batchCount);
+        JobHandle integrateJobHandle = integrateJob.Schedule(numberOfParticles, m_BatchCount);
         integrateJobHandle.Complete();
 
         //_particleColorPositionBuffer.SetData(_particles);
@@ -569,15 +564,16 @@ public class SPHSystem : SystemBase
         //Graphics.DrawMeshInstancedIndirect(particleMesh, 0, material, new Bounds(Vector3.zero, new Vector3(100.0f, 100.0f, 100.0f)), _argsBuffer, castShadows: UnityEngine.Rendering.ShadowCastingMode.On);
         elapsedSimulationSteps++;
 
-        //_particles = this.GetEntityQuery(typeof(Particle)).ToComponentDataArray<Particle>(Allocator.Persistent);
+        this.GetEntityQuery(typeof(Particle)).CopyFromComponentDataArray(m_Particles);
 
-        this.GetEntityQuery(typeof(Particle)).CopyFromComponentDataArray(_particles);
-
-        Entities.WithAll<Particle, Translation>().ForEach((ref Particle particle, ref Translation translation) => {
+        JobHandle dummyHandle = new();
+        JobHandle updateTranslationsJob = Entities.WithAll<Particle, Translation>().ForEach((ref Particle particle, ref Translation translation) =>
+        {
             translation.Value = particle.Position;
-        }).Run();
+        }).Schedule(dummyHandle);
+        updateTranslationsJob.Complete();
 
-        _particles.Dispose();
+        m_Particles.Dispose();
     }
 
     public static class SpatialHashing
@@ -585,12 +581,12 @@ public class SPHSystem : SystemBase
         public static float CellSize = 1f;
         public static int Dimensions = 10;
 
-        public static Vector3Int GetCell(Vector3 position, float cellSize)
+        public static int3 GetCell(float3 position, float cellSize)
         {
-            return new Vector3Int((int)(position.x / cellSize), (int)(position.y / cellSize), (int)(position.z / cellSize));
+            return new int3((int)(position.x / cellSize), (int)(position.y / cellSize), (int)(position.z / cellSize));
         }
 
-        public static int Hash(Vector3Int cell, int dimensions)
+        public static int Hash(int3 cell, int dimensions)
         {
             return cell.x + dimensions * (cell.y + dimensions * cell.z);
         }
