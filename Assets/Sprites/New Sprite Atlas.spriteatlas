@@ -45,12 +45,21 @@ SpriteAtlas:
     variantMultiplier: 1
     packables:
     - {fileID: 2800000, guid: 841a5fe179903e740b615a44c3a20fbc, type: 3}
+    - {fileID: 2800000, guid: eb96f217e50ae6242a22ebe3466709b7, type: 3}
     bindAsDefault: 1
     isAtlasV2: 0
     cachedData: {fileID: 0}
   m_MasterAtlas: {fileID: 0}
-  m_PackedSprites: []
-  m_PackedSpriteNamesToIndex: []
+  m_PackedSprites:
+  - {fileID: 1401173852, guid: eb96f217e50ae6242a22ebe3466709b7, type: 3}
+  - {fileID: -1135424909, guid: eb96f217e50ae6242a22ebe3466709b7, type: 3}
+  - {fileID: -406634493, guid: eb96f217e50ae6242a22ebe3466709b7, type: 3}
+  - {fileID: -429188990, guid: eb96f217e50ae6242a22ebe3466709b7, type: 3}
+  m_PackedSpriteNamesToIndex:
+  - BlankSheet_1
+  - BlankSheet_0
+  - BlankSheet_3
+  - BlankSheet_2
   m_RenderDataMap: {}
   m_Tag: New Sprite Atlas
   m_IsVariant: 0
