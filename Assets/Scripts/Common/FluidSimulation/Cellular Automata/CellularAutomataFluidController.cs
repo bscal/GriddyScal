@@ -1,3 +1,4 @@
+using Common.Grids;
 using UnityEngine;
 
 public class CellularAutomataFluidController : MonoBehaviour
@@ -5,7 +6,7 @@ public class CellularAutomataFluidController : MonoBehaviour
 
     public static CellularAutomataFluidController Instance { get; private set; }
 
-    public SpriteTileSet TileSet;
+    public SpriteGrid Grid;
 
     public float MaxMass = 1.0f;
     public float MinMass = 0.0001f;
@@ -22,12 +23,13 @@ public class CellularAutomataFluidController : MonoBehaviour
     private void Awake()
     {
         Instance = this;
-
         m_MaxMassSqr = MaxMass * MaxMass;
-        int size = TileSet.Size.x * TileSet.Size.y;
-        m_Mass = new float[size];
-        m_NewMass = new float[size];
-        m_States = new int[size];
+    }
+    private void Start()
+    {
+        m_Mass = new float[Grid.grid.Size];
+        m_NewMass = new float[Grid.grid.Size];
+        m_States = new int[Grid.grid.Size];
     }
 
     // Update is called once per frame
@@ -39,15 +41,15 @@ public class CellularAutomataFluidController : MonoBehaviour
 
     void UpdateTileSetSprites()
     {
-        for (int x = 0; x < TileSet.Size.x; x++)
+        for (int x = 0; x < Grid.grid.Width; x++)
         {
-            for (int y = 0; y < TileSet.Size.y; y++)
+            for (int y = 0; y < Grid.grid.Height; y++)
             {
                 int id = GetCellId(x, y);
                 int state = m_States[id];
-                if (state == CellState.STATE_GROUND) TileSet.SetColor(x, y, Color.black);
-                else if (state == CellState.STATE_AIR) TileSet.SetColor(x, y, Color.white);
-                else TileSet.SetColor(x, y, Color.Lerp(Color.cyan, Color.blue, m_Mass[id]));
+                if (state == CellState.STATE_GROUND) Grid.SetColor(x, y, Color.black);
+                else if (state == CellState.STATE_AIR) Grid.SetColor(x, y, Color.white);
+                else Grid.SetColor(x, y, Color.Lerp(Color.cyan, Color.blue, m_Mass[id]));
             }
         }
     }
@@ -56,9 +58,9 @@ public class CellularAutomataFluidController : MonoBehaviour
     {
         float remainingMass;
 
-        for (int x = 0; x < TileSet.Size.x; x++)
+        for (int x = 0; x < Grid.grid.Width; x++)
         {
-            for (int y = 0; y < TileSet.Size.y; y++)
+            for (int y = 0; y < Grid.grid.Height; y++)
             {
                 int id = GetCellId(x, y);
                 if (m_States[id] == CellState.STATE_GROUND) continue;
@@ -130,10 +132,9 @@ public class CellularAutomataFluidController : MonoBehaviour
         // Copies new mass
         m_NewMass.CopyTo(m_Mass, 0);
 
-        // Updates states
-        for (int x = 0; x < TileSet.Size.x; x++)
+        for (int x = 0; x < Grid.grid.Width; x++)
         {
-            for (int y = 0; y < TileSet.Size.y; y++)
+            for (int y = 0; y < Grid.grid.Height; y++)
             {
                 int id = GetCellId(x, y);
 
@@ -177,9 +178,9 @@ public class CellularAutomataFluidController : MonoBehaviour
 
     public void UpdateState(int x, int y, int id, int state)
     {
-        if (state == CellState.STATE_GROUND) TileSet.SetColor(x, y, Color.black);
-        else if (state == CellState.STATE_AIR) TileSet.SetColor(x, y, Color.white);
-        else TileSet.SetColor(x, y, Color.Lerp(Color.cyan, Color.blue, m_Mass[id]));
+        if (state == CellState.STATE_GROUND) Grid.SetColor(x, y, Color.black);
+        else if (state == CellState.STATE_AIR) Grid.SetColor(x, y, Color.white);
+        else Grid.SetColor(x, y, Color.Lerp(Color.cyan, Color.blue, m_Mass[id]));
     }
 
     public float GetStableMass(float totalMass)
@@ -192,9 +193,9 @@ public class CellularAutomataFluidController : MonoBehaviour
 
     public int GetCellId(int x, int y)
     {
-        x = Mathf.Clamp(x, 0, TileSet.Size.x - 1);
-        y = Mathf.Clamp(y, 0, TileSet.Size.y - 1);
-        return x + y * TileSet.Size.x;
+        x = Mathf.Clamp(x, 0, Grid.grid.Width - 1);
+        y = Mathf.Clamp(y, 0, Grid.grid.Height - 1);
+        return x + y * Grid.grid.Width;
     }
 }
 

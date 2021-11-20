@@ -1,3 +1,4 @@
+using Common.Grids;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
@@ -9,7 +10,7 @@ using UnityEngine;
  * UVs are Vector3 where the z value is used for the array index
  * </summary>
  */
-public class TileMap2DArray : MonoBehaviour
+public class TileMap2DArray : GridBehaviour
 {
     private const int VERTEX_COUNT = 4;
 
