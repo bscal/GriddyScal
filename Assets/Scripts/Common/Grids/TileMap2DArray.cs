@@ -77,14 +77,6 @@ public class TileMap2DArray : GridBehaviour
         };
         var uvHandle = uvJob.Schedule();
 
-        //NativeArray<FluidTile> tiles = new(Size, Allocator.TempJob);
-        //GenTileArray tilesJob = new GenTileArray {
-        //    Seed = m_Random,
-        //    MapSize = MapSize,
-        //    Tiles = tiles
-        //};
-        //var tilesHandler = tilesJob.Schedule();
-
         NativeArray<Vector4> colors = new(Size * VERTEX_COUNT, Allocator.TempJob);
         GenColorUVs cJob = new() {
             MapSize = MapSize,
@@ -112,14 +104,10 @@ public class TileMap2DArray : GridBehaviour
         cHandler.Complete();
         mesh.SetUVs(1, cJob.UVs.ToArray());
 
-        //tilesHandler.Complete();
-        //m_Tiles = tilesJob.Tiles.ToArray();
-
         // free
         vertices.Dispose();
         uvs.Dispose();
         colors.Dispose();
-        //tiles.Dispose();
         triangles.Dispose();
 
         m_MeshFilter.mesh = mesh;

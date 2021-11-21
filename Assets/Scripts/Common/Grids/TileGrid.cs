@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace Common.Grids
 {
-    public class GridBehaviour : MonoBehaviour
+
+    public abstract class GridBehaviour : MonoBehaviour
     {
     }
 
