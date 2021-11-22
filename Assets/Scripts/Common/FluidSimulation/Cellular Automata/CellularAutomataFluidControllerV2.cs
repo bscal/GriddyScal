@@ -36,8 +36,9 @@ namespace Assets.Scripts.Common.FluidSimulation.Cellular_Automata
         // Update is called once per frame
         void Update()
         {
-            SimulateCompression();
             UpdateTileSetSprites();
+            SimulateCompression();
+
         }
 
         void UpdateTileSetSprites()
@@ -177,6 +178,7 @@ namespace Assets.Scripts.Common.FluidSimulation.Cellular_Automata
         public void SetState(int x, int y, int state, bool updateState = true)
         {
             int id = GetCellId(x, y);
+            Debug.Log($"{x}, {y}, {id}, {state}");
             m_States[id] = state;
             //if (updateState) UpdateState(x, y, id, state);
         }

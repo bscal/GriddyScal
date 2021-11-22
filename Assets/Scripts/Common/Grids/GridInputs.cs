@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using Assets.Scripts.Common.FluidSimulation.Cellular_Automata;
+using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Common.Grids
@@ -22,22 +23,22 @@ namespace Common.Grids
             if (Physics.Raycast(ray, out RaycastHit hit, 100.0f))
             {
                 var diff = hit.point - GridReference.transform.position;
-                int x = Mathf.RoundToInt(diff.x);
-                int y = Mathf.RoundToInt(diff.y);
+                int x = (int)diff.x;
+                int y = (int)diff.y;
                 Debug.Log(x + " " + y);
 
                 if (rightClicked)
                 {
-                    CellularAutomataFluidController.Instance.SetState(x, y, CellState.STATE_GROUND);
+                    CellularAutomataFluidControllerV2.Instance.SetState(x, y, CellState.STATE_GROUND);
                 }
                 else if (leftClicked)
                 {
-                    CellularAutomataFluidController.Instance.SetState(x, y, CellState.STATE_WATER);
-                    CellularAutomataFluidController.Instance.AddMass(x, y, 1.0f);
+                    CellularAutomataFluidControllerV2.Instance.SetState(x, y, CellState.STATE_WATER);
+                    CellularAutomataFluidControllerV2.Instance.AddMass(x, y, 1.0f);
                 }
                 else if (middleClicked)
                 {
-                    CellularAutomataFluidController.Instance.MarkAsInfiniteSource(x, y);
+                    CellularAutomataFluidControllerV2.Instance.MarkAsInfiniteSource(x, y);
                 }
             }
         }

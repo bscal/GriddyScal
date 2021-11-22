@@ -113,16 +113,16 @@ public class TileMap2DArray : GridBehaviour
         m_MeshFilter.mesh = mesh;
         gameObject.SetActive(true);
 
+        var collider = gameObject.AddComponent<BoxCollider>();
+        collider.size = new(MapSize.x, MapSize.y, .01f);
+
         m_Watch.Stop();
         Debug.Log($"TileMap2DArray took: {m_Watch.ElapsedMilliseconds}ms to Awake()");
     }
 
-    void Start()
-    {
-    }
-
     void Update()
     {
+
     }
 
     public List<Vector3> GetTileUVs()
