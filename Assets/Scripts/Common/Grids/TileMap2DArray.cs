@@ -2,6 +2,7 @@ using Common.Grids;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
+using UnityEditor;
 using UnityEngine;
 
 /**
@@ -10,7 +11,7 @@ using UnityEngine;
  * UVs are Vector3 where the z value is used for the array index
  * </summary>
  */
-public class TileMap2DArray : GridBehaviour
+public class TileMap2DArray : MonoBehaviour
 {
     private const int VERTEX_COUNT = 4;
 
@@ -31,8 +32,6 @@ public class TileMap2DArray : GridBehaviour
     private Unity.Mathematics.Random m_Random;
     private MeshRenderer m_MeshRenderer;
     private MeshFilter m_MeshFilter;
-
-    //public FluidTile[] m_Tiles;
 
     private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
@@ -167,14 +166,14 @@ public class TileMap2DArray : GridBehaviour
     }
 
     // *************************
-    public List<Vector4> GetTileColor()
+    public List<Vector4> GetMeshColors()
     {
         List<Vector4> uvs = new();
         m_MeshFilter.mesh.GetUVs(1, uvs);
         return uvs;
     }
 
-    public void SetTileColor(in List<Vector4> uvs)
+    public void SetMeshColors(in List<Vector4> uvs)
     {
         m_MeshFilter.mesh.SetUVs(1, uvs);
     }

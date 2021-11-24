@@ -4,12 +4,7 @@ using UnityEngine;
 namespace Common.Grids
 {
 
-    public abstract class GridBehaviour : MonoBehaviour
-    {
-    }
-
-    [Serializable]
-    public class TileGrid<T> : ISerializationCallbackReceiver
+    public class TileGrid<T>
     {
 
         public int Width, Height;
@@ -58,15 +53,6 @@ namespace Common.Grids
                     consumer.Invoke(x, y);
                 }
             }
-        }
-
-        public void OnBeforeSerialize()
-        {
-        }
-
-        public void OnAfterDeserialize()
-        {
-            m_Elements = new T[Width, Height];
         }
     }
 }

@@ -10,17 +10,18 @@ namespace Common.Grids
     /// <summary>
     /// A Basic implementations of a Grid with made with GameObject and Sprites, not designed for preformance
     /// </summary>
-    public class SpriteGrid : GridBehaviour
+    public class SpriteGrid : MonoBehaviour
     {
         public GameObject Prefab;
         [Header("Grid")]
-        public TileGrid<SpriteGridCell> grid;
+        public int Width, Height;
         public int CellWidth, CellHeight;
         public bool Is3D;
         [Header("Texture")]
         public Texture2D Texture;
         public int TextureTileWidth, TextureTileHeight;
 
+        public TileGrid<SpriteGridCell> grid;
         private Sprite[] m_LoadedSprites;
         private int m_TextureTilesPerRow;
 
@@ -30,6 +31,7 @@ namespace Common.Grids
             m_LoadedSprites = new Sprite[m_TextureTilesPerRow * (Texture.height / TextureTileHeight)];
             LoadSprites();
 
+            grid = new TileGrid<SpriteGridCell>(Width, Height);
             grid.ForEach((x, y) =>
             {
                 GameObject go = Instantiate(Prefab, transform);

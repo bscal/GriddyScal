@@ -336,7 +336,6 @@ GameObject:
   - component: {fileID: 1150643228}
   - component: {fileID: 1150643227}
   - component: {fileID: 1150643226}
-  - component: {fileID: 1150643225}
   m_Layer: 0
   m_Name: TileMapV2
   m_TagString: Untagged
@@ -344,19 +343,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1150643225
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1150643224}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5c27deb4fab2ffa4980f5e8507e3484e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  GridReference: {fileID: 1150643226}
 --- !u!114 &1150643226
 MonoBehaviour:
   m_ObjectHideFlags: 0

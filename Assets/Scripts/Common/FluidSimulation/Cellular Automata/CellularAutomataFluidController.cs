@@ -1,5 +1,6 @@
 using Common.Grids;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class CellularAutomataFluidController : MonoBehaviour
 {
@@ -25,6 +26,7 @@ public class CellularAutomataFluidController : MonoBehaviour
         Instance = this;
         m_MaxMassSqr = MaxMass * MaxMass;
     }
+
     private void Start()
     {
         m_Mass = new float[Grid.grid.Size];
@@ -32,24 +34,40 @@ public class CellularAutomataFluidController : MonoBehaviour
         m_States = new int[Grid.grid.Size];
     }
 
-    // Update is called once per frame
     void Update()
     {
+        HandleInputs();
         SimulateCompression();
-        //UpdateTileSetSprites();
     }
 
-    void UpdateTileSetSprites()
+    private void HandleInputs()
     {
-        for (int x = 0; x < Grid.grid.Width; x++)
+        bool rightClicked = Mouse.current.rightButton.wasPressedThisFrame;
+        bool leftClicked = Mouse.current.leftButton.isPressed;
+        bool middleClicked = Mouse.current.middleButton.wasPressedThisFrame;
+
+        if (!rightClicked && !leftClicked && !middleClicked) return;
+
+        var camera = Camera.main;
+        var ray = camera.ScreenPointToRay(Mouse.current.position.ReadValue());
+
+        if (Physics.Raycast(ray, out RaycastHit hit, 100.0f))
         {
-            for (int y = 0; y < Grid.grid.Height; y++)
+            var diff = hit.point - transform.position;
+            int x = Mathf.RoundToInt(diff.x);
+            int y = Mathf.RoundToInt(diff.y);
+            if (rightClicked)
             {
-                int id = GetCellId(x, y);
-                int state = m_States[id];
-                if (state == CellState.STATE_GROUND) Grid.SetColor(x, y, Color.black);
-                else if (state == CellState.STATE_AIR) Grid.SetColor(x, y, Color.white);
-                else Grid.SetColor(x, y, Color.Lerp(Color.cyan, Color.blue, m_Mass[id]));
+                SetState(x, y, CellState.STATE_GROUND);
+            }
+            else if (leftClicked)
+            {
+                SetState(x, y, CellState.STATE_WATER);
+                AddMass(x, y, 1.0f);
+            }
+            else if (middleClicked)
+            {
+                MarkAsInfiniteSource(x, y);
             }
         }
     }
