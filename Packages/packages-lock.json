@@ -33,7 +33,7 @@
       "dependencies": {}
     },
     "com.unity.2d.spriteshape": {
-      "version": "7.0.0",
+      "version": "7.0.2",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -211,7 +211,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.render-pipelines.core": {
-      "version": "12.1.0",
+      "version": "12.1.1",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
@@ -230,14 +230,14 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.scriptablebuildpipeline": {
-      "version": "1.19.2",
+      "version": "1.19.3",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
     "com.unity.searcher": {
-      "version": "4.9.0",
+      "version": "4.9.1",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
@@ -257,12 +257,12 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.shadergraph": {
-      "version": "12.1.0",
+      "version": "12.1.1",
       "depth": 0,
       "source": "builtin",
       "dependencies": {
-        "com.unity.render-pipelines.core": "12.1.0",
-        "com.unity.searcher": "4.8.0"
+        "com.unity.render-pipelines.core": "12.1.1",
+        "com.unity.searcher": "4.9.1"
       }
     },
     "com.unity.test-framework": {

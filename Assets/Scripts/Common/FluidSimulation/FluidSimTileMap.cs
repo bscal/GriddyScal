@@ -101,7 +101,7 @@ namespace Common.FluidSimulation
                     TileMap.SetColor(id, c, colors);
                 }
             }
-            TileMap.SetMeshColors(colors);
+            TileMap.SetMeshColors(colors.ToArray());
         }
 
         void Diffuse(int b, float[] x, float[] x0, float diff, float dt)

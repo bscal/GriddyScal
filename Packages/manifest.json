@@ -2,7 +2,7 @@
   "dependencies": {
     "com.unity.2d.pixel-perfect": "5.0.1",
     "com.unity.2d.sprite": "1.0.0",
-    "com.unity.2d.spriteshape": "7.0.0",
+    "com.unity.2d.spriteshape": "7.0.2",
     "com.unity.burst": "1.6.0",
     "com.unity.dots.editor": "0.12.0-preview.6",
     "com.unity.entities": "0.17.0-preview.42",
@@ -11,7 +11,7 @@
     "com.unity.inputsystem": "1.1.1",
     "com.unity.physics": "0.6.0-preview.3",
     "com.unity.rendering.hybrid": "0.11.0-preview.44",
-    "com.unity.shadergraph": "12.1.0",
+    "com.unity.shadergraph": "12.1.1",
     "com.unity.test-framework": "1.1.29",
     "com.unity.textmeshpro": "3.0.6",
     "com.unity.timeline": "1.6.2",

@@ -1,7 +1,7 @@
-﻿using System.Collections;
-using Unity.Collections;
+﻿using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -10,7 +10,7 @@ namespace Common.FluidSimulation.Cellular_Automata
     [DisableAutoCreation]
     public class CAFluidSystem : SystemBase
     {
-        public int Width, Height;
+        public TileMap2DArray Grid;
         public float MaxMass = 1.0f;
         public float MinMass = 0.0001f;
         public float MaxCompression = 0.02f;
@@ -20,14 +20,14 @@ namespace Common.FluidSimulation.Cellular_Automata
         public NativeArray<float> m_Mass;
         public NativeArray<float> m_NewMass;
         public NativeArray<int> m_States;
+        public NativeArray<float4> m_Colors;
 
         protected override void OnStartRunning()
         {
-            Debug.Log("STARTED");
-            int size = Width * Height;
-            m_Mass = new NativeArray<float>(size, Allocator.Persistent);
-            m_NewMass = new NativeArray<float>(size, Allocator.Persistent);
-            m_States = new NativeArray<int>(size, Allocator.Persistent);
+            m_Mass = new NativeArray<float>(Grid.Size, Allocator.Persistent);
+            m_NewMass = new NativeArray<float>(Grid.Size, Allocator.Persistent);
+            m_States = new NativeArray<int>(Grid.Size, Allocator.Persistent);
+            m_Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
         }
 
         protected override void OnDestroy()
@@ -35,13 +35,17 @@ namespace Common.FluidSimulation.Cellular_Automata
             m_Mass.Dispose();
             m_NewMass.Dispose();
             m_States.Dispose();
+            m_Colors.Dispose();
         }
 
         protected override void OnUpdate()
         {
+            m_NewMass.CopyFrom(m_Mass);
+
             SimulateCompressionJob simulateCompressionJob = new SimulateCompressionJob
             {
-                Width = Width,
+                Width = Grid.MapSize.x,
+                Height = Grid.MapSize.y,
                 MaxMass = MaxMass,
                 MinMass = MinMass,
                 MaxCompression = MaxCompression,
@@ -61,34 +65,54 @@ namespace Common.FluidSimulation.Cellular_Automata
             {
                 MinMass = MinMass,
                 Mass = m_Mass,
-                States = m_States
+                States = m_States,
+                Colors = m_Colors,
             };
+            
             JobHandle updateHandle = updateStates.ScheduleParallel(m_States.Length, 64, this.Dependency);
             updateHandle.Complete();
+            Grid.SetMeshColors(m_Colors.Reinterpret<Vector4>().ToArray());
         }
     }
 
     public struct UpdateStates : IJobFor
     {
+        [ReadOnly] public static readonly float4 BLACK = new(0f, 0f, 0f, 1f);
+        [ReadOnly] public static readonly float4 WHITE = new(1f, 1f, 1f, 1f);
+        [ReadOnly] public static readonly float4 CYAN = new(0f, 1f, 1f, 1f);
+        [ReadOnly] public static readonly float4 BLUE = new(0f, 0f, 1f, 1f);
+
         [ReadOnly] public float MinMass;
         public NativeArray<float> Mass;
         public NativeArray<int> States;
+        [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<float4> Colors;
 
         public void Execute(int index)
         {
-            if (States[index] == CellState.STATE_GROUND) return;
-            else if (States[index] == CellState.STATE_INFINITE)
+            int state = States[index];
+            if (state == CellState.STATE_GROUND)
             {
-                Mass[index] = 1;
                 return;
             }
             States[index] = (Mass[index] > MinMass) ? CellState.STATE_WATER : CellState.STATE_AIR;
+            if (state == CellState.STATE_GROUND) SetColor(index, BLACK);
+            else if (state == CellState.STATE_AIR) SetColor(index, WHITE);
+            else SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
+        }
+
+        private void SetColor(int index, float4 color)
+        {
+            int offset = index * 4;
+            Colors[offset + 0] = color;
+            Colors[offset + 1] = color;
+            Colors[offset + 2] = color;
+            Colors[offset + 3] = color;
         }
     }
 
     public struct SimulateCompressionJob : IJobFor
     {
-        [ReadOnly] public int Width;
+        [ReadOnly] public int Width, Height;
         [ReadOnly] public float MaxMass;
         [ReadOnly] public float MinMass;
         [ReadOnly] public float MaxCompression;
@@ -98,70 +122,70 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public NativeArray<float> Mass;
         [ReadOnly] public NativeArray<int> States;
 
-        [WriteOnly] public NativeArray<float> NewMass;
+        [NativeDisableParallelForRestriction] public NativeArray<float> NewMass;
 
-        public void Execute(int index)
+        public void Execute(int i)
         {
-            if (States[index] == CellState.STATE_GROUND) return;
 
+
+
+
+            int x = i % Width;
+            int y = i / Width;
+            int index = GetCellId(x, y);
             float remainingMass = Mass[index];
             if (remainingMass <= 0) return;
-
+            if (States[index] == CellState.STATE_GROUND) return;
             float flow;
             // Down
-            int downId = index - Width;
-            if (States[downId] != CellState.STATE_GROUND)
+            int downId = GetCellId(x, y - 1);
+            if (InBounds(x, y - 1) && States[downId] != CellState.STATE_GROUND)
             {
                 flow = GetStableMass(remainingMass + Mass[downId]) - Mass[downId];
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                flow = Mathf.Clamp(flow, 0, Mathf.Min(MaxSpeed, remainingMass));
-
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
                 NewMass[index] -= flow;
                 NewMass[downId] += flow;
                 remainingMass -= flow;
             }
-
             if (remainingMass <= 0) return;
 
             // Left
-            int leftId = index - 1;
-            if (States[leftId] != CellState.STATE_GROUND)
+            int leftId = GetCellId(x - 1, y);
+            if (InBounds(x - 1, y) && States[leftId] != CellState.STATE_GROUND)
             {
                 flow = (Mass[index] - Mass[leftId]) / 4;
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                flow = Mathf.Clamp(flow, 0, remainingMass);
-
+                flow = math.clamp(flow, 0, remainingMass);
                 NewMass[index] -= flow;
                 NewMass[leftId] += flow;
                 remainingMass -= flow;
             }
 
-
-            if (remainingMass <= 0) return ;
+            if (remainingMass <= 0) return;
 
             // Right
-            int rightId = index + 1;
-            if (States[rightId] != CellState.STATE_GROUND)
+            int rightId = GetCellId(x + 1, y);
+            if (InBounds(x + 1, y) && States[rightId] != CellState.STATE_GROUND)
             {
                 flow = (Mass[index] - Mass[rightId]) / 4;
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                flow = Mathf.Clamp(flow, 0, remainingMass);
-
-              NewMass[index] -= flow;
+                flow = math.clamp(flow, 0, remainingMass);
+                NewMass[index] -= flow;
                 NewMass[rightId] += flow;
                 remainingMass -= flow;
+
             }
 
             if (remainingMass <= 0) return;
 
             // Up
-            int upId = index + Width;
-            if (States[upId] != CellState.STATE_GROUND)
+            int upId = GetCellId(x, y + 1);
+            if (InBounds(x, y + 1) && States[upId] != CellState.STATE_GROUND)
             {
                 flow = remainingMass - GetStableMass(remainingMass + Mass[upId]);
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                flow = Mathf.Clamp(flow, 0, Mathf.Min(MaxSpeed, remainingMass));
-
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
                 NewMass[index] -= flow;
                 NewMass[upId] += flow;
             }
@@ -173,6 +197,18 @@ namespace Common.FluidSimulation.Cellular_Automata
             if (totalMass <= 1) return 1;
             else if (totalMass < 2 * MaxMass + MaxCompression) return (MaxMassSqr + totalMass * MaxCompression) / (MaxMass + MaxCompression);
             else return (totalMass + MaxCompression) / 2;
+        }
+
+        public bool InBounds(int x, int y)
+        {
+            return x > -1 && y > -1 && x < Width && y < Height;
+        }
+
+        public int GetCellId(int x, int y)
+        {
+            x = math.clamp(x, 0, Width - 1);
+            y = math.clamp(y, 0, Height - 1);
+            return x + y * Width;
         }
     }
 
@@ -187,20 +223,52 @@ namespace Common.FluidSimulation.Cellular_Automata
         private void Awake()
         {
             m_CAFluidSystem = World.DefaultGameObjectInjectionWorld.CreateSystem<CAFluidSystem>();
-            m_CAFluidSystem.Width = Grid.MapSize.x;
-            m_CAFluidSystem.Height = Grid.MapSize.y;
+            m_CAFluidSystem.Grid = Grid;
         }
 
         // Update is called once per frame
         void Update()
         {
+            HandleInputs();
             if (m_CAFluidSystem.Enabled)
             {
                 m_CAFluidSystem.Update();
             }
         }
 
-        
+        private void HandleInputs()
+        {
+            bool rightClicked = Mouse.current.rightButton.wasPressedThisFrame;
+            bool leftClicked = Mouse.current.leftButton.isPressed;
+            bool middleClicked = Mouse.current.middleButton.wasPressedThisFrame;
+
+            if (!rightClicked && !leftClicked && !middleClicked) return;
+
+            var camera = Camera.main;
+            var ray = camera.ScreenPointToRay(Mouse.current.position.ReadValue());
+
+            if (Physics.Raycast(ray, out RaycastHit hit, 100.0f))
+            {
+                var diff = hit.point - transform.position;
+                int x = (int)diff.x;
+                int y = (int)diff.y;
+                Debug.Log($"{x}, {y}");
+                Debug.Log($"mass = {m_CAFluidSystem.m_Mass[x + y * Grid.MapSize.x]}");
+                if (rightClicked)
+                {
+                    SetState(x, y, CellState.STATE_GROUND);
+                }
+                else if (leftClicked)
+                {
+                    SetState(x, y, CellState.STATE_WATER);
+                    AddMass(x, y, 1.0f);
+                }
+                else if (middleClicked)
+                {
+                    MarkAsInfiniteSource(x, y);
+                }
+            }
+        }
 
         public void MarkAsInfiniteSource(int x, int y)
         {

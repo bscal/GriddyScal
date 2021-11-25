@@ -357,7 +357,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Material: {fileID: 2100000, guid: adb22e252439b91488d2d4155a737702, type: 2}
   TextureTileSize: {x: 16, y: 16}
-  MapSize: {x: 32, y: 32}
+  MapSize: {x: 64, y: 64}
   TileSize: {x: 1, y: 1}
 --- !u!114 &1150643227
 MonoBehaviour:
@@ -372,11 +372,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Grid: {fileID: 1150643226}
-  MaxMass: 1
-  MinMass: 0.0001
-  MaxCompression: 0.02
-  MinFlow: 0.01
-  MaxSpeed: 1
 --- !u!4 &1150643228
 Transform:
   m_ObjectHideFlags: 0
@@ -402,9 +397,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1184838803}
   - component: {fileID: 1184838807}
-  - component: {fileID: 1184838806}
   - component: {fileID: 1184838808}
-  - component: {fileID: 1184838809}
   m_Layer: 0
   m_Name: TileMap
   m_TagString: Untagged
@@ -427,19 +420,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1184838806
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1184838802}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5c27deb4fab2ffa4980f5e8507e3484e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  GridReference: {fileID: 1184838807}
 --- !u!114 &1184838807
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -453,9 +433,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Prefab: {fileID: 7659302554230030504, guid: e1dffba8eda1e9b46a0eb74e322ec3ca, type: 3}
-  grid:
-    Width: 32
-    Height: 32
+  Width: 32
+  Height: 32
   CellWidth: 1
   CellHeight: 1
   Is3D: 1
@@ -480,21 +459,6 @@ MonoBehaviour:
   MaxCompression: 0.02
   MinFlow: 0.01
   MaxSpeed: 1
---- !u!114 &1184838809
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1184838802}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 18115d59f91966b41aab265689a71c55, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Grid:
-    Width: 0
-    Height: 0
 --- !u!1 &1677395208
 GameObject:
   m_ObjectHideFlags: 0

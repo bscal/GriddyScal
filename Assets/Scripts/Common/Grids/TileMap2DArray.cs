@@ -173,7 +173,7 @@ public class TileMap2DArray : MonoBehaviour
         return uvs;
     }
 
-    public void SetMeshColors(in List<Vector4> uvs)
+    public void SetMeshColors(Vector4[] uvs)
     {
         m_MeshFilter.mesh.SetUVs(1, uvs);
     }
