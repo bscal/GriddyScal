@@ -12,9 +12,9 @@ namespace Common.FluidSimulation.Cellular_Automata
     {
         public TileMap2DArray Grid;
         public float MaxMass = 1.0f;
-        public float MinMass = 0.0001f;
+        public float MinMass = 0.005f;
         public float MaxCompression = 0.02f;
-        public float MinFlow = .01f;
+        public float MinFlow = 0.01f;
         public float MaxSpeed = 1f;
 
         public NativeArray<float> m_Mass;
@@ -68,7 +68,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 States = m_States,
                 Colors = m_Colors,
             };
-            
+
             JobHandle updateHandle = updateStates.ScheduleParallel(m_States.Length, 64, this.Dependency);
             updateHandle.Complete();
             Grid.SetMeshColors(m_Colors.Reinterpret<Vector4>().ToArray());
@@ -90,11 +90,19 @@ namespace Common.FluidSimulation.Cellular_Automata
         public void Execute(int index)
         {
             int state = States[index];
-            if (state == CellState.STATE_GROUND)
+            if (state != CellState.STATE_GROUND)
             {
-                return;
+                if (Mass[index] >= MinMass)
+                {
+                    States[index] = CellState.STATE_WATER;
+                }   
+                else
+                {
+                    //Mass[index] = 0;
+                    States[index] = CellState.STATE_AIR;
+                }
             }
-            States[index] = (Mass[index] > MinMass) ? CellState.STATE_WATER : CellState.STATE_AIR;
+
             if (state == CellState.STATE_GROUND) SetColor(index, BLACK);
             else if (state == CellState.STATE_AIR) SetColor(index, WHITE);
             else SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
@@ -126,10 +134,6 @@ namespace Common.FluidSimulation.Cellular_Automata
 
         public void Execute(int i)
         {
-
-
-
-
             int x = i % Width;
             int y = i / Width;
             int index = GetCellId(x, y);
@@ -148,7 +152,8 @@ namespace Common.FluidSimulation.Cellular_Automata
                 NewMass[downId] += flow;
                 remainingMass -= flow;
             }
-            if (remainingMass <= 0) return;
+            if (remainingMass <= 0)
+                return;
 
             // Left
             int leftId = GetCellId(x - 1, y);
@@ -156,28 +161,29 @@ namespace Common.FluidSimulation.Cellular_Automata
             {
                 flow = (Mass[index] - Mass[leftId]) / 4;
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                flow = math.clamp(flow, 0, remainingMass);
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
                 NewMass[index] -= flow;
                 NewMass[leftId] += flow;
                 remainingMass -= flow;
             }
 
-            if (remainingMass <= 0) return;
-
+            if (remainingMass <= 0)
+                return;
             // Right
             int rightId = GetCellId(x + 1, y);
             if (InBounds(x + 1, y) && States[rightId] != CellState.STATE_GROUND)
             {
                 flow = (Mass[index] - Mass[rightId]) / 4;
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                flow = math.clamp(flow, 0, remainingMass);
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
                 NewMass[index] -= flow;
                 NewMass[rightId] += flow;
                 remainingMass -= flow;
 
             }
 
-            if (remainingMass <= 0) return;
+            if (remainingMass <= 0)
+                return;
 
             // Up
             int upId = GetCellId(x, y + 1);
@@ -261,7 +267,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 else if (leftClicked)
                 {
                     SetState(x, y, CellState.STATE_WATER);
-                    AddMass(x, y, 1.0f);
+                    SetMass(x, y, .5f);
                 }
                 else if (middleClicked)
                 {
