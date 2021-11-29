@@ -621,8 +621,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1677978376}
-  - component: {fileID: 1677978375}
   - component: {fileID: 1677978377}
+  - component: {fileID: 1677978378}
   m_Layer: 0
   m_Name: TileMapV2
   m_TagString: Untagged
@@ -630,22 +630,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1677978375
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1677978374}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 07723997aab1a51468248dcd6e711a3f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Material: {fileID: 2100000, guid: 89fafb4afc1452945b279078d2db4183, type: 2}
-  TextureTileSize: {x: 16, y: 16}
-  MapSize: {x: 80, y: 80}
-  TileSize: {x: 1, y: 1}
 --- !u!4 &1677978376
 Transform:
   m_ObjectHideFlags: 0
@@ -673,4 +657,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 62455f603ece4814e8808f32be1dae16, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  TileMap: {fileID: 1677978375}
+  TileMap: {fileID: 1677978378}
+--- !u!114 &1677978378
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1677978374}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b193b639c2ada548a07b223cf74c0aa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Material: {fileID: 2100000, guid: adb22e252439b91488d2d4155a737702, type: 2}
+  TextureTileSize: {x: 16, y: 16}
+  MapSize: {x: 32, y: 32}
+  TileSize: {x: 1, y: 1}
