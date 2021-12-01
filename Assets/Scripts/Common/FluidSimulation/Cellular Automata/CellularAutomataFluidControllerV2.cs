@@ -30,7 +30,7 @@ namespace Common.FluidSimulation.Cellular_Automata
             m_Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
         }
 
-        protected override void OnDestroy()
+        protected override void OnStopRunning()
         {
             m_Mass.Dispose();
             m_NewMass.Dispose();
@@ -306,16 +306,5 @@ namespace Common.FluidSimulation.Cellular_Automata
             y = Mathf.Clamp(y, 0, Grid.MapSize.y - 1);
             return x + y * Grid.MapSize.x;
         }
-    }
-
-    public struct CellState
-    {
-        public const int STATE_NONE = -1;
-        public const int STATE_AIR = 0;
-        public const int STATE_GROUND = 1;
-        public const int STATE_WATER = 2;
-        public const int STATE_INFINITE = 3;
-
-        public int State;
     }
 }

@@ -1,3 +1,4 @@
+using Common.FluidSimulation.Cellular_Automata;
 using Common.Grids;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -215,15 +216,4 @@ public class CellularAutomataFluidController : MonoBehaviour
         y = Mathf.Clamp(y, 0, Grid.grid.Height - 1);
         return x + y * Grid.grid.Width;
     }
-}
-
-public struct CellState
-{
-    public const int STATE_NONE = -1;
-    public const int STATE_AIR = 0;
-    public const int STATE_GROUND = 1;
-    public const int STATE_WATER = 2;
-    public const int STATE_INFINITE = 3;
-
-    public int State;
 }
