@@ -334,7 +334,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1150643228}
-  - component: {fileID: 1150643227}
   - component: {fileID: 1150643229}
   - component: {fileID: 1150643226}
   m_Layer: 0
@@ -360,19 +359,6 @@ MonoBehaviour:
   TextureTileSize: {x: 16, y: 16}
   MapSize: {x: 256, y: 32}
   TileSize: {x: 1, y: 1}
---- !u!114 &1150643227
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1150643224}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4099e05f64e26a7478588533efac362d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Grid: {fileID: 1150643226}
 --- !u!4 &1150643228
 Transform:
   m_ObjectHideFlags: 0

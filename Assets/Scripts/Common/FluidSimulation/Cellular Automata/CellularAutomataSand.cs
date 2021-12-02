@@ -15,21 +15,25 @@ namespace Common.FluidSimulation.Cellular_Automata
 
         private TilePhysicsSystem m_TilePhysicsSystem;
 
-        public NativeArray<CellStateV2> States;
+        public NativeArray<TileState> States;
+        public NativeArray<TileState> NewStates;
         public NativeArray<float4> Colors;
 
         private void Awake()
         {
-            States = new NativeArray<CellStateV2>(Grid.Size, Allocator.Persistent);
+            States = new NativeArray<TileState>(Grid.Size, Allocator.Persistent);
+            NewStates = new NativeArray<TileState>(Grid.Size, Allocator.Persistent);
             Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
 
             m_TilePhysicsSystem = World.DefaultGameObjectInjectionWorld.CreateSystem<TilePhysicsSystem>();
             m_TilePhysicsSystem.Grid = Grid;
+            m_TilePhysicsSystem.GridStates = this;
         }
 
         private void OnDestroy()
         {
             States.Dispose();
+            NewStates.Dispose();
             Colors.Dispose();
         }
 
@@ -59,16 +63,26 @@ namespace Common.FluidSimulation.Cellular_Automata
                 var diff = hit.point - transform.position;
                 int x = (int)diff.x;
                 int y = (int)diff.y;
-                Debug.Log($"{x}, {y}");
-                Debug.Log($"mass = {m_TilePhysicsSystem.Mass[x + y * Grid.MapSize.x]}");
+
+                bool shiftHeld = Keyboard.current.leftShiftKey.isPressed;
+
+
                 if (rightClicked)
                 {
-                    SetState(x, y, CellRegistry.INSTANCE.STONE);
+                    if (shiftHeld)
+                        SetState(x, y, CellRegistry.INSTANCE.AIR);
+                    else
+                        SetState(x, y, CellRegistry.INSTANCE.STONE);
                 }
                 else if (leftClicked)
                 {
-                    SetState(x, y, CellRegistry.INSTANCE.FRESH_WATER);
-                    SetMass(x, y, .5f);
+                    if (shiftHeld)
+                        SetState(x, y, CellRegistry.INSTANCE.SAND);
+                    else
+                    {
+                        SetState(x, y, CellRegistry.INSTANCE.FRESH_WATER);
+                        SetMass(x, y, .5f);
+                    }
                 }
                 else if (middleClicked)
                 {
@@ -94,7 +108,7 @@ namespace Common.FluidSimulation.Cellular_Automata
             m_TilePhysicsSystem.Mass[id] = mass;
         }
 
-        public void SetState(int x, int y, CellStateV2 state, bool updateState = true)
+        public void SetState(int x, int y, TileState state, bool updateState = true)
         {
             int id = GetCellId(x, y);
             States[id] = state;
@@ -113,6 +127,7 @@ namespace Common.FluidSimulation.Cellular_Automata
     {
         public TileMap2DArray Grid;
         public CellularAutomataSand GridStates;
+        public int Count;
         public float MaxMass = 1.0f;
         public float MinMass = 0.005f;
         public float MaxCompression = 0.02f;
@@ -122,8 +137,11 @@ namespace Common.FluidSimulation.Cellular_Automata
         public NativeArray<float> Mass;
         public NativeArray<float> NewMass;
 
+        private bool m_FallingLeft;
+
         protected override void OnStartRunning()
         {
+            Count = Grid.Size;
             Mass = new NativeArray<float>(Grid.Size, Allocator.Persistent);
             NewMass = new NativeArray<float>(Grid.Size, Allocator.Persistent);
         }
@@ -152,10 +170,26 @@ namespace Common.FluidSimulation.Cellular_Automata
                 NewMass = NewMass,
                 States = GridStates.States,
             };
-            JobHandle simulationHandle = simulateCompressionJob.ScheduleParallel(Mass.Length, 1, this.Dependency);
+            JobHandle simulationHandle = simulateCompressionJob.ScheduleParallel(Count, 1, this.Dependency);
             simulationHandle.Complete();
 
             NewMass.CopyTo(Mass);
+
+            GridStates.NewStates.CopyFrom(GridStates.States);
+
+            SandSimulationJob sandSimJob = new()
+            {
+                Width = Grid.MapSize.x,
+                Height = Grid.MapSize.y,
+                FallLeft = (m_FallingLeft = !m_FallingLeft),
+                States = GridStates.States,
+                NewStates = GridStates.NewStates,
+                CellStates = CellRegistry.INSTANCE.States,
+            };
+            JobHandle sandSimHandle = sandSimJob.ScheduleParallel(Count, 1, this.Dependency);
+            sandSimHandle.Complete();
+
+            GridStates.States.CopyFrom(GridStates.NewStates);
 
             UpdateTileStates updateStates = new()
             {
@@ -163,9 +197,10 @@ namespace Common.FluidSimulation.Cellular_Automata
                 Mass = Mass,
                 States = GridStates.States,
                 Colors = GridStates.Colors,
+                CellStates = CellRegistry.INSTANCE.States
             };
 
-            JobHandle updateHandle = updateStates.ScheduleParallel(Mass.Length, 64, this.Dependency);
+            JobHandle updateHandle = updateStates.ScheduleParallel(Count, 64, this.Dependency);
             updateHandle.Complete();
             Grid.SetMeshColors(GridStates.Colors.Reinterpret<Vector4>().ToArray());
         }
@@ -175,19 +210,16 @@ namespace Common.FluidSimulation.Cellular_Automata
 
     public struct UpdateTileStates : IJobFor
     {
-        [ReadOnly] static readonly NamespacedKey AIR = new NamespacedKey("AIR");
-        [ReadOnly] static readonly NamespacedKey STONE = new NamespacedKey("STONE");
-        [ReadOnly] static readonly NamespacedKey FRESH_WATER = new NamespacedKey("FRESH_WATER");
-
         [ReadOnly] public static readonly float4 BLACK = new(0f, 0f, 0f, 1f);
         [ReadOnly] public static readonly float4 WHITE = new(1f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 CYAN = new(0f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 BLUE = new(0f, 0f, 1f, 1f);
+        [ReadOnly] public static readonly float4 SAND = new(.2f, .5f, .5f, 1f);
 
+        [ReadOnly] public NativeList<TileState> CellStates;
         [ReadOnly] public float MinMass;
-        [ReadOnly] public NativeHashMap<NamespacedKey, CellStateV2> StatesMap;
         public NativeArray<float> Mass;
-        public NativeArray<CellStateV2> States;
+        public NativeArray<TileState> States;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<float4> Colors;
 
         public void Execute(int index)
@@ -197,16 +229,17 @@ namespace Common.FluidSimulation.Cellular_Automata
             {
                 if (Mass[index] >= MinMass)
                 {
-                    States[index] = StatesMap[FRESH_WATER];
+                    States[index] = CellStates[3];
                 }
                 else
                 {
-                    States[index] = StatesMap[AIR];
+                    States[index] = CellStates[0];
                 }
             }
 
-            if (state.Equals(StatesMap[STONE])) SetColor(index, BLACK);
-            else if (state.Equals(StatesMap[AIR])) SetColor(index, WHITE);
+            if (state.StateId == 1) SetColor(index, BLACK);
+            else if (state.IsAir) SetColor(index, WHITE);
+            else if (state.StateId == 4) SetColor(index, SAND);
             else SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
         }
 
@@ -220,42 +253,50 @@ namespace Common.FluidSimulation.Cellular_Automata
         }
     }
 
-    public struct SandSimulationJob : IJobEntityBatchWithIndex
+    public struct SandSimulationJob : IJobFor
     {
         [ReadOnly] public int Width, Height;
         [ReadOnly] public bool FallLeft;
-        [ReadOnly] public NativeArray<ushort> States;
-        [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<ushort> NewStates;
+        [ReadOnly] public NativeArray<TileState> States;
+        [ReadOnly] public NativeList<TileState> CellStates;
+        [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<TileState> NewStates;
 
-        public void Execute(ArchetypeChunk batchInChunk, int batchIndex, int indexOfFirstEntityInQuery)
+        public void Execute(int index)
         {
-            throw new System.NotImplementedException();
-        }
-
-        public void Execute(int i)
-        {
-            int x = i % Width;
-            int y = i / Width;
-            int index = GetCellId(x, y);
+            int x = index % Width;
+            int y = index / Width;
             // If downwards falling blocks (sand) are at the bottom of map, they have nowhere to go.
-            if (InBounds(x, y - 1)) return;
+            if (!InBounds(x, y - 1) || States[index].StateId != 4) return;
 
             int down = GetCellId(x, y - 1);
-
-
-            if (InBounds(x, y - 1))
-
-            if (FallLeft)
+            if (!States[down].IsSolid)
             {
-                int left = GetCellId(x - 1, y);
+                // Handle downwards movement
+                NewStates[down] = States[index];
+                NewStates[index] = CellStates[0];
             }
-            
-            else
-            {
-                int right = GetCellId(x + 1, y);
+            else {
+                if (FallLeft)
+                {
+                    int left = GetCellId(x - 1, y - 1);
+                    if (InBounds(x - 1, y - 1) && !States[left].IsSolid)
+                    {
+                        // Handle leftward movement
+                        NewStates[left] = States[index];
+                        NewStates[index] = CellStates[0];
+                    }
+                }
+                else
+                {
+                    int right = GetCellId(x + 1, y - 1);
+                    if (InBounds(x + 1, y - 1) && !States[right].IsSolid)
+                    {
+                        // Handle rightward movement
+                        NewStates[right] = States[index];
+                        NewStates[index] = CellStates[0];
+                    }
+                }
             }
-            
-
         }
 
 
@@ -283,7 +324,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public float MinFlow;
         [ReadOnly] public float MaxSpeed;
         [ReadOnly] public float MaxMassSqr;
-        [ReadOnly] public NativeArray<CellStateV2> States;
+        [ReadOnly] public NativeArray<TileState> States;
         [ReadOnly] public NativeArray<float> Mass;
 
         [NativeDisableParallelForRestriction] public NativeArray<float> NewMass;
@@ -299,7 +340,7 @@ namespace Common.FluidSimulation.Cellular_Automata
             float flow;
             // Down
             int downId = GetCellId(x, y - 1);
-            if (InBounds(x, y - 1) && States[downId].IsSolid)
+            if (InBounds(x, y - 1) && !States[downId].IsSolid)
             {
                 flow = GetStableMass(remainingMass + Mass[downId]) - Mass[downId];
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
@@ -313,7 +354,7 @@ namespace Common.FluidSimulation.Cellular_Automata
 
             // Left
             int leftId = GetCellId(x - 1, y);
-            if (InBounds(x - 1, y) && States[leftId].IsSolid)
+            if (InBounds(x - 1, y) && !States[leftId].IsSolid)
             {
                 flow = (Mass[index] - Mass[leftId]) / 4;
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
@@ -327,7 +368,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 return;
             // Right
             int rightId = GetCellId(x + 1, y);
-            if (InBounds(x + 1, y) && States[rightId].IsSolid)
+            if (InBounds(x + 1, y) && !States[rightId].IsSolid)
             {
                 flow = (Mass[index] - Mass[rightId]) / 4;
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
@@ -343,7 +384,7 @@ namespace Common.FluidSimulation.Cellular_Automata
 
             // Up
             int upId = GetCellId(x, y + 1);
-            if (InBounds(x, y + 1) && States[upId].IsSolid)
+            if (InBounds(x, y + 1) && !States[upId].IsSolid)
             {
                 flow = remainingMass - GetStableMass(remainingMass + Mass[upId]);
                 if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow

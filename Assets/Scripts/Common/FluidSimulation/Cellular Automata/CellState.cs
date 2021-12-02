@@ -10,14 +10,13 @@ namespace Common.FluidSimulation.Cellular_Automata
 
         public event Action<CellRegistry> LoadStates;
 
-        public readonly NativeList<CellStateV2> States;
-        public readonly NativeHashMap<NamespacedKey, CellStateV2> StatesMap;
+        public readonly NativeList<TileState> States;
 
-        public readonly CellStateV2 AIR;
-        public readonly CellStateV2 STONE;
-        public readonly CellStateV2 WOOD;
-        public readonly CellStateV2 FRESH_WATER;
-        public readonly CellStateV2 SAND;
+        public readonly TileState AIR;
+        public readonly TileState STONE;
+        public readonly TileState WOOD;
+        public readonly TileState FRESH_WATER;
+        public readonly TileState SAND;
 
         private ushort m_InternalIndex;
 
@@ -25,11 +24,11 @@ namespace Common.FluidSimulation.Cellular_Automata
         {
             States = new(Allocator.Persistent);
 
-            AIR = Register("AIR", false);
-            STONE = Register("STONE", true);
-            WOOD = Register("WOOD", true);
-            FRESH_WATER = Register("FRESH_WATER", false);
-            SAND = Register("SAND", true);
+            AIR = Register(false);
+            STONE = Register(true);
+            WOOD = Register(true);
+            FRESH_WATER = Register(false);
+            SAND = Register(true);
 
             LoadStates?.Invoke(this);
         }
@@ -39,19 +38,18 @@ namespace Common.FluidSimulation.Cellular_Automata
             States.Dispose();
         }
 
-        public CellStateV2 Register(string key, bool isSolid)
+        public TileState Register(bool isSolid)
         {
-            var state = new CellStateV2
+            var state = new TileState
             {
                 StateId = m_InternalIndex++,
                 IsSolid = isSolid,
             };
             States.Add(state);
-            StatesMap.Add(new NamespacedKey(key), state);
             return state;
         }
 
-        public CellStateV2 Get(CellStateV2 state)
+        public TileState Get(TileState state)
         {
             return States[state.StateId];
         }
@@ -73,7 +71,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         public NamespacedKey(string keyNamespace, string id)
         {
             Namespace = keyNamespace;
-            Id = id; ;
+            Id = id;
         }
 
         private NamespacedKey(string[] keyArray)
@@ -97,15 +95,14 @@ namespace Common.FluidSimulation.Cellular_Automata
         public bool Equals(NamespacedKey other) => this.Namespace == other.Namespace && this.Id == other.Id;
     }
 
-    public struct CellStateV2 : IEquatable<CellStateV2>
+    public struct TileState : IEquatable<TileState>
     {
         public ushort StateId;
         public bool IsSolid;
 
-
         public bool IsAir => StateId == 0;
 
-        public bool Equals(CellStateV2 other) => StateId == other.StateId;
+        public bool Equals(TileState other) => StateId == other.StateId;
     }
 
     public struct CellState
