@@ -459,6 +459,55 @@ MonoBehaviour:
   MaxCompression: 0.02
   MinFlow: 0.01
   MaxSpeed: 1
+--- !u!1 &1579790208
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1579790210}
+  - component: {fileID: 1579790209}
+  m_Layer: 0
+  m_Name: CellStateManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1579790209
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1579790208}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 03ee7e72296ab584e800a4491c3ba98b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Cells:
+  - {fileID: 11400000, guid: 500abca647af40e4eb5f5a0672786ccd, type: 2}
+  - {fileID: 11400000, guid: fb0047cb9fd78e548898b4afd68da849, type: 2}
+  - {fileID: 11400000, guid: 3eeca93eb1d1e0b429e89d5c735d8cc3, type: 2}
+  - {fileID: 11400000, guid: ce28cf80cdd78a1428397c7ad6fcd7f0, type: 2}
+--- !u!4 &1579790210
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1579790208}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 14.132221, y: 16.381577, z: 1.9250202}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 6
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1677395208
 GameObject:
   m_ObjectHideFlags: 0

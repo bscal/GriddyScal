@@ -4,40 +4,35 @@ using UnityEngine;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
+using System;
+using Common.Utils;
 
-public class StateScriptableObject : ScriptableObject
+namespace Common.Grids
 {
-    public string Name;
-    public Color Color;
-}
-
-public class CellStateManager : MonoBehaviour
-{
-    public List<StateScriptableObject> Cells;
-}
-
-public struct CellStateData
-{
-    public float4 CellColor;
-}
-
-public struct CellStatesBlobAsset
-{
-    public BlobArray<CellStateData> CellStates;
-}
-
-public class CellStateBuilder : GameObjectConversionSystem
-{
-
-    public BlobAssetReference<CellStatesBlobAsset> CellStatesBlobReference;
-
-    protected override void OnUpdate()
+    [CreateAssetMenu(fileName = "Cell", menuName = "Game/CellState")]
+    public class CellStateScriptableObject : ScriptableObject
     {
-        using BlobBuilder blobBuilder = new();
+        public string Name;
+        public NamespacedKey NamespacedKey;
+        public Color Color;
 
-        ref CellStatesBlobAsset cellStatesBlobAsset = ref blobBuilder.ConstructRoot<CellStatesBlobAsset>();
-        blobBuilder.Allocate(ref cellStatesBlobAsset.CellStates, 256);
+        public bool IsSolid;
 
-        CellStatesBlobReference = blobBuilder.CreateBlobAssetReference<CellStatesBlobAsset>(Allocator.Persistent);
+        public CellStateData GetDefaultState()
+        {
+            return new CellStateData()
+            {
+                CellColor = Utils.Utils.ColorToFloat4(Color),
+                IsSolid = IsSolid,
+            };
+        }
+    }
+
+    public struct CellStateData : IEquatable<CellStateData>
+    {
+        public float4 CellColor;
+        public bool IsSolid;
+
+        public bool Equals(CellStateData other) => NamespacedKey.Value == other.NamespacedKey.Value;
     }
 }

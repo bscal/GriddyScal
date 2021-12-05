@@ -6,7 +6,7 @@ namespace Common.FluidSimulation.Cellular_Automata
 {
     public class CellRegistry
     {
-        public static readonly CellRegistry INSTANCE = new();
+        //public static readonly CellRegistry INSTANCE = new();
 
         public event Action<CellRegistry> LoadStates;
 
@@ -53,46 +53,6 @@ namespace Common.FluidSimulation.Cellular_Automata
         {
             return States[state.StateId];
         }
-    }
-
-    public readonly struct NamespacedKey : IEquatable<NamespacedKey>
-    {
-        public const string DEFAULT_NAMESPACE = "default";
-
-        public readonly string Namespace;
-        public readonly string Id;
-
-        public NamespacedKey(string id)
-        {
-            Namespace = DEFAULT_NAMESPACE;
-            Id = id;
-        }
-
-        public NamespacedKey(string keyNamespace, string id)
-        {
-            Namespace = keyNamespace;
-            Id = id;
-        }
-
-        private NamespacedKey(string[] keyArray)
-        {
-            Namespace = keyArray[0];
-            Id = keyArray[1];
-        }
-
-        public static NamespacedKey FromString(string value)
-        {
-            var split = value.Split(':');
-            if (split.Length == 2) return new NamespacedKey(split);
-#if DEBUG
-            Debug.LogError("Unable to create NamespacedKey from String: " + value);
-#endif
-            return new NamespacedKey("INVALID", value);
-        }
-
-        public override string ToString() => Namespace + ":" + Id;
-
-        public bool Equals(NamespacedKey other) => this.Namespace == other.Namespace && this.Id == other.Id;
     }
 
     public struct TileState : IEquatable<TileState>

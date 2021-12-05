@@ -1,3 +1,5 @@
+using Common.Grids;
+using Common.Grids.Cells;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -14,20 +16,26 @@ namespace Common.FluidSimulation.Cellular_Automata
         public TileMap2DArray Grid;
 
         private TilePhysicsSystem m_TilePhysicsSystem;
+        private CellStateManager m_CellStateManagerRef;
 
-        public NativeArray<TileState> States;
-        public NativeArray<TileState> NewStates;
+        public NativeArray<CellStateData> States;
+        public NativeArray<CellStateData> NewStates;
         public NativeArray<float4> Colors;
 
         private void Awake()
         {
-            States = new NativeArray<TileState>(Grid.Size, Allocator.Persistent);
-            NewStates = new NativeArray<TileState>(Grid.Size, Allocator.Persistent);
+            States = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
+            NewStates = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
             Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
 
             m_TilePhysicsSystem = World.DefaultGameObjectInjectionWorld.CreateSystem<TilePhysicsSystem>();
             m_TilePhysicsSystem.Grid = Grid;
             m_TilePhysicsSystem.GridStates = this;
+        }
+
+        private void Start()
+        {
+            m_CellStateManagerRef = CellStateManager.Instance;
         }
 
         private void OnDestroy()
@@ -70,17 +78,17 @@ namespace Common.FluidSimulation.Cellular_Automata
                 if (rightClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, CellRegistry.INSTANCE.AIR);
+                        SetState(x, y, m_CellStateManagerRef.Air.GetDefaultState());
                     else
-                        SetState(x, y, CellRegistry.INSTANCE.STONE);
+                        SetState(x, y, m_CellStateManagerRef.Cells[m_CellStateManagerRef.Stone].GetDefaultState());
                 }
                 else if (leftClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, CellRegistry.INSTANCE.SAND);
+                        SetState(x, y, m_CellStateManagerRef.GetDefaultState(m_CellStateManagerRef.Sand));
                     else
                     {
-                        SetState(x, y, CellRegistry.INSTANCE.FRESH_WATER);
+                        SetState(x, y, m_CellStateManagerRef.GetDefaultState(m_CellStateManagerRef.Fresh_Water));
                         SetMass(x, y, .5f);
                     }
                 }
@@ -108,7 +116,7 @@ namespace Common.FluidSimulation.Cellular_Automata
             m_TilePhysicsSystem.Mass[id] = mass;
         }
 
-        public void SetState(int x, int y, TileState state, bool updateState = true)
+        public void SetState(int x, int y, CellStateData state, bool updateState = true)
         {
             int id = GetCellId(x, y);
             States[id] = state;
