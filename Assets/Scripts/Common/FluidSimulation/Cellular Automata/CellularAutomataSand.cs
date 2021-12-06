@@ -192,7 +192,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 FallLeft = (m_FallingLeft = !m_FallingLeft),
                 States = GridStates.States,
                 NewStates = GridStates.NewStates,
-                CellStates = CellRegistry.INSTANCE.States,
+                CellStates = CellStateManager.Instance.CellStatesBlobMap,
             };
             JobHandle sandSimHandle = sandSimJob.ScheduleParallel(Count, 1, this.Dependency);
             sandSimHandle.Complete();
@@ -205,7 +205,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 Mass = Mass,
                 States = GridStates.States,
                 Colors = GridStates.Colors,
-                CellStates = CellRegistry.INSTANCE.States
+                CellStates = CellStateManager.Instance.CellStatesBlobMap,
             };
 
             JobHandle updateHandle = updateStates.ScheduleParallel(Count, 64, this.Dependency);
@@ -222,13 +222,18 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public static readonly float4 WHITE = new(1f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 CYAN = new(0f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 BLUE = new(0f, 0f, 1f, 1f);
-        [ReadOnly] public static readonly float4 SAND = new(.2f, .5f, .5f, 1f);
+        [ReadOnly] public static readonly float4 SAND_COLOR = new(.2f, .5f, .5f, 1f);
 
-        [ReadOnly] public NativeList<TileState> CellStates;
+        [ReadOnly] public BlobAssetReference<CellStatesBlobHashMap> CellStates;
         [ReadOnly] public float MinMass;
         public NativeArray<float> Mass;
-        public NativeArray<TileState> States;
+        public NativeArray<CellStateData> States;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<float4> Colors;
+
+        [ReadOnly] static readonly FixedString64 AIR = new("default:air");
+        [ReadOnly] static readonly FixedString64 WATER = new("default:fresh_water");
+        [ReadOnly] static readonly FixedString64 SAND = new("default:sand");
+        [ReadOnly] static readonly FixedString64 STONE = new("default:stone");
 
         public void Execute(int index)
         {
@@ -237,17 +242,17 @@ namespace Common.FluidSimulation.Cellular_Automata
             {
                 if (Mass[index] >= MinMass)
                 {
-                    States[index] = CellStates[3];
+                    States[index] = CellStates.Value.CellStates[new FixedString64("default:fresh_water")];
                 }
                 else
                 {
-                    States[index] = CellStates[0];
+                    States[index] = CellStates.Value.CellStates[new FixedString64("default:air")];
                 }
             }
 
-            if (state.StateId == 1) SetColor(index, BLACK);
-            else if (state.IsAir) SetColor(index, WHITE);
-            else if (state.StateId == 4) SetColor(index, SAND);
+            if (state.Equals(CellStates.Value.CellStates[STONE])) SetColor(index, BLACK);
+            else if (state.Equals(CellStates.Value.CellStates[AIR])) SetColor(index, WHITE);
+            else if (state.Equals(CellStates.Value.CellStates[SAND])) SetColor(index, SAND_COLOR);
             else SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
         }
 
@@ -265,23 +270,23 @@ namespace Common.FluidSimulation.Cellular_Automata
     {
         [ReadOnly] public int Width, Height;
         [ReadOnly] public bool FallLeft;
-        [ReadOnly] public NativeArray<TileState> States;
-        [ReadOnly] public NativeList<TileState> CellStates;
-        [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<TileState> NewStates;
+        [ReadOnly] public NativeArray<CellStateData> States;
+        [ReadOnly] public BlobAssetReference<CellStatesBlobHashMap> CellStates;
+        [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<CellStateData> NewStates;
 
         public void Execute(int index)
         {
             int x = index % Width;
             int y = index / Width;
             // If downwards falling blocks (sand) are at the bottom of map, they have nowhere to go.
-            if (!InBounds(x, y - 1) || States[index].StateId != 4) return;
+            if (!InBounds(x, y - 1) || States[index].Equals(CellStates.Value.CellStates[new FixedString64("default:sand")])) return;
 
             int down = GetCellId(x, y - 1);
             if (!States[down].IsSolid)
             {
                 // Handle downwards movement
                 NewStates[down] = States[index];
-                NewStates[index] = CellStates[0];
+                NewStates[index] = CellStates.Value.CellStates[new FixedString64("default:air")];
             }
             else {
                 if (FallLeft)
@@ -291,7 +296,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle leftward movement
                         NewStates[left] = States[index];
-                        NewStates[index] = CellStates[0];
+                        NewStates[index] = CellStates.Value.CellStates[new FixedString64("default:air")]; ;
                     }
                 }
                 else
@@ -301,7 +306,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle rightward movement
                         NewStates[right] = States[index];
-                        NewStates[index] = CellStates[0];
+                        NewStates[index] = CellStates.Value.CellStates[new FixedString64("default:air")];
                     }
                 }
             }
@@ -332,7 +337,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public float MinFlow;
         [ReadOnly] public float MaxSpeed;
         [ReadOnly] public float MaxMassSqr;
-        [ReadOnly] public NativeArray<TileState> States;
+        [ReadOnly] public NativeArray<CellStateData> States;
         [ReadOnly] public NativeArray<float> Mass;
 
         [NativeDisableParallelForRestriction] public NativeArray<float> NewMass;

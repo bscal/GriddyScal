@@ -13,17 +13,19 @@ namespace Common.Utils
         public static float4 ColorToFloat4(Color color) => new(color.r, color.g, color.b, color.a);
     }
 
-    public struct NamespacedKey : IEquatable<NamespacedKey>
+    public class NamespacedKey : IEquatable<NamespacedKey>
     {
         public const string DEFAULT_NAMESPACE = "default";
 
         public string Namespace;
         public string Id;
+        public string Value { get; private set; }
 
         public NamespacedKey(string id)
         {
             Namespace = DEFAULT_NAMESPACE;
             Id = id;
+            Value = Namespace + ":" + Id;
         }
 
         public NamespacedKey(string keyNamespace, string id)
@@ -33,12 +35,14 @@ namespace Common.Utils
             else
                 Namespace = keyNamespace;
             Id = id;
+            Value = Namespace + ":" + Id;
         }
 
         private NamespacedKey(string[] keyArray)
         {
             Namespace = keyArray[0];
             Id = keyArray[1];
+            Value = Namespace + ":" + Id;
         }
 
         public static NamespacedKey FromString(string value)
@@ -51,7 +55,7 @@ namespace Common.Utils
             return new NamespacedKey("INVALID", value);
         }
 
-        public override string ToString() => Namespace + ":" + Id;
+        public override string ToString() => Value;
 
         public bool Equals(NamespacedKey other) => this.Namespace == other.Namespace && this.Id == other.Id;
 

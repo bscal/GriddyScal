@@ -22,6 +22,7 @@ namespace Common.Grids
         {
             return new CellStateData()
             {
+                NamespacedKey = new FixedString64(NamespacedKey.Value),
                 CellColor = Utils.Utils.ColorToFloat4(Color),
                 IsSolid = IsSolid,
             };
@@ -30,6 +31,7 @@ namespace Common.Grids
 
     public struct CellStateData : IEquatable<CellStateData>
     {
+        public FixedString64 NamespacedKey;
         public float4 CellColor;
         public bool IsSolid;
 

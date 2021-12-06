@@ -28,6 +28,7 @@ namespace Common.Grids.Cells
         public CellStateScriptableObject Clear => Cells[CLEAR];
 
         public BlobAssetReference<CellStatesBlobAsset> CellStatesBlobReference { get; private set; }
+        public BlobAssetReference<CellStatesBlobHashMap> CellStatesBlobMap { get; private set; }
 
         public CellStateData GetDefaultState(ushort index) => Cells[index].GetDefaultState();
 
@@ -38,17 +39,27 @@ namespace Common.Grids.Cells
 
         public void OnAfterDeserialize()
         {
-            using BlobBuilder blobBuilder = new();
+            BlobBuilder blobArrayBuilder = new(Allocator.Temp);
+            BlobBuilder blobMapBuilder = new(Allocator.Temp);
 
-            ref CellStatesBlobAsset cellStatesBlobAsset = ref blobBuilder.ConstructRoot<CellStatesBlobAsset>();
-            var array = blobBuilder.Allocate(ref cellStatesBlobAsset.CellStates, Cells.Length);
+            ref CellStatesBlobAsset cellStatesBlobAsset = ref blobArrayBuilder.ConstructRoot<CellStatesBlobAsset>();
+            var array = blobArrayBuilder.Allocate(ref cellStatesBlobAsset.CellStates, Cells.Length);
+
+            ref var cellStatesHashMap = ref blobMapBuilder.ConstructRoot<CellStatesBlobHashMap>();
+            var map = blobMapBuilder.AllocateHashMap(ref cellStatesHashMap.CellStates, Cells.Length);
 
             for (int i = 0; i < Cells.Length; i++)
             {
-                array[i] = Cells[i].GetDefaultState();
+                var state = Cells[i].GetDefaultState();
+                array[i] = state;
+                map.Add(Cells[i].NamespacedKey.Value, state);
             }
-            CellStatesBlobReference = blobBuilder.CreateBlobAssetReference<CellStatesBlobAsset>(Allocator.Persistent);
 
+            CellStatesBlobReference = blobArrayBuilder.CreateBlobAssetReference<CellStatesBlobAsset>(Allocator.Persistent);
+            blobArrayBuilder.Dispose();
+
+            CellStatesBlobMap = blobMapBuilder.CreateBlobAssetReference<CellStatesBlobHashMap>(Allocator.Persistent);
+            blobMapBuilder.Dispose();
         }
 
         public void OnBeforeSerialize()
