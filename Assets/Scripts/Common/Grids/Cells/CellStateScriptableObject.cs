@@ -6,14 +6,18 @@ using Unity.Collections;
 using Unity.Mathematics;
 using System;
 using Common.Utils;
+using System.Security.Cryptography;
+using System.Text;
+
 
 namespace Common.Grids
 {
     [CreateAssetMenu(fileName = "Cell", menuName = "Game/CellState")]
-    public class CellStateScriptableObject : ScriptableObject
+    public class CellStateScriptableObject : ScriptableObject, ISerializationCallbackReceiver
     {
         public string Name;
         public NamespacedKey NamespacedKey;
+        public int NamespaceHash;
         public Color Color;
 
         public bool IsSolid;
@@ -22,19 +26,28 @@ namespace Common.Grids
         {
             return new CellStateData()
             {
-                NamespacedKey = new FixedString64(NamespacedKey.Value),
+                Id = NamespaceHash,
                 CellColor = Utils.Utils.ColorToFloat4(Color),
                 IsSolid = IsSolid,
             };
+        }
+
+        public void OnAfterDeserialize()
+        {
+            NamespaceHash = NamespacedKey.Value.GetStableHashCode();
+        }
+
+        public void OnBeforeSerialize()
+        {
         }
     }
 
     public struct CellStateData : IEquatable<CellStateData>
     {
-        public FixedString64 NamespacedKey;
+        public int Id;
         public float4 CellColor;
         public bool IsSolid;
 
-        public bool Equals(CellStateData other) => NamespacedKey.Value == other.NamespacedKey.Value;
+        public bool Equals(CellStateData other) => Id == other.Id;
     }
 }

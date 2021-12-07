@@ -13,5 +13,8 @@ MonoBehaviour:
   m_Name: Sand
   m_EditorClassIdentifier: 
   Name: Sand
+  NamespacedKey:
+    Namespace: 
+    Id: Sand
   Color: {r: 1, g: 0.81422216, b: 0.6084906, a: 0}
   IsSolid: 1

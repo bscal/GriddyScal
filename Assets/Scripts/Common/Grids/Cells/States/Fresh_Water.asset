@@ -12,6 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0f06b577542dee479f55d7966fa6328, type: 3}
   m_Name: Fresh_Water
   m_EditorClassIdentifier: 
-  Name: 
+  Name: Fresh Water
+  NamespacedKey:
+    Namespace: 
+    Id: Fresh_Water
   Color: {r: 0.33784264, g: 0.54034925, b: 0.9811321, a: 0}
   IsSolid: 0

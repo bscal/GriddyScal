@@ -11,9 +11,29 @@ namespace Common.Utils
     public static class Utils
     {
         public static float4 ColorToFloat4(Color color) => new(color.r, color.g, color.b, color.a);
+
+        public static int GetStableHashCode(this string str)
+        {
+            unchecked
+            {
+                int hash1 = 5381;
+                int hash2 = hash1;
+
+                for (int i = 0; i < str.Length && str[i] != '\0'; i += 2)
+                {
+                    hash1 = ((hash1 << 5) + hash1) ^ str[i];
+                    if (i == str.Length - 1 || str[i + 1] == '\0')
+                        break;
+                    hash2 = ((hash2 << 5) + hash2) ^ str[i + 1];
+                }
+
+                return hash1 + (hash2 * 1566083941);
+            }
+        }
     }
 
-    public class NamespacedKey : IEquatable<NamespacedKey>
+    [Serializable]
+    public class NamespacedKey : IEquatable<NamespacedKey>, ISerializationCallbackReceiver
     {
         public const string DEFAULT_NAMESPACE = "default";
 
@@ -24,6 +44,7 @@ namespace Common.Utils
         public NamespacedKey(string id)
         {
             Namespace = DEFAULT_NAMESPACE;
+            id = id.ToLower();
             Id = id;
             Value = Namespace + ":" + Id;
         }
@@ -34,6 +55,7 @@ namespace Common.Utils
                 Namespace = DEFAULT_NAMESPACE;
             else
                 Namespace = keyNamespace;
+            id = id.ToLower();
             Id = id;
             Value = Namespace + ":" + Id;
         }
@@ -41,7 +63,7 @@ namespace Common.Utils
         private NamespacedKey(string[] keyArray)
         {
             Namespace = keyArray[0];
-            Id = keyArray[1];
+            Id = keyArray[1].ToLower();
             Value = Namespace + ":" + Id;
         }
 
@@ -58,6 +80,18 @@ namespace Common.Utils
         public override string ToString() => Value;
 
         public bool Equals(NamespacedKey other) => this.Namespace == other.Namespace && this.Id == other.Id;
+
+        public void OnBeforeSerialize()
+        {
+        }
+
+        public void OnAfterDeserialize()
+        {
+            if (Namespace == null || Namespace.Length == 0)
+                Namespace = DEFAULT_NAMESPACE;
+            Id = Id.ToLower();
+            Value = Namespace + ":" + Id;
+        }
 
         public static bool operator ==(NamespacedKey l, NamespacedKey r)
         {

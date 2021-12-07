@@ -13,5 +13,8 @@ MonoBehaviour:
   m_Name: Stone
   m_EditorClassIdentifier: 
   Name: Stone
+  NamespacedKey:
+    Namespace: 
+    Id: Stone
   Color: {r: 0.3962264, g: 0.3962264, b: 0.3962264, a: 0}
   IsSolid: 1

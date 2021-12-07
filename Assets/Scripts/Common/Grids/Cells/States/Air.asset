@@ -13,5 +13,8 @@ MonoBehaviour:
   m_Name: Air
   m_EditorClassIdentifier: Assembly-CSharp::StateScriptableObject
   Name: Air
+  NamespacedKey:
+    Namespace: 
+    Id: air
   Color: {r: 1, g: 1, b: 1, a: 0}
   IsSolid: 0

@@ -8,18 +8,13 @@ using BlobHashMaps;
 
 namespace Common.Grids.Cells
 {
-    public class CellStateManager : MonoBehaviour, ISerializationCallbackReceiver
+    public class CellStateManager : MonoBehaviour
     {
         public static CellStateManager Instance { get; private set; }
 
         public const ushort AIR = 0;
         public const ushort BLANK = 1;
         public const ushort CLEAR = 2;
-
-        public ushort Stone = 3;
-        public ushort Fresh_Water = 4;
-        public ushort Sand = 5;
-        public ushort Wood = 6;
 
         public CellStateScriptableObject[] Cells;
 
@@ -35,10 +30,7 @@ namespace Common.Grids.Cells
         private void Awake()
         {
             Instance = this;
-        }
 
-        public void OnAfterDeserialize()
-        {
             BlobBuilder blobArrayBuilder = new(Allocator.Temp);
             BlobBuilder blobMapBuilder = new(Allocator.Temp);
 
@@ -60,10 +52,6 @@ namespace Common.Grids.Cells
 
             CellStatesBlobMap = blobMapBuilder.CreateBlobAssetReference<CellStatesBlobHashMap>(Allocator.Persistent);
             blobMapBuilder.Dispose();
-        }
-
-        public void OnBeforeSerialize()
-        {
         }
     }
 

@@ -1,5 +1,6 @@
 using Common.Grids;
 using Common.Grids.Cells;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -78,17 +79,17 @@ namespace Common.FluidSimulation.Cellular_Automata
                 if (rightClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, m_CellStateManagerRef.Air.GetDefaultState());
+                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:air"]);
                     else
-                        SetState(x, y, m_CellStateManagerRef.Cells[m_CellStateManagerRef.Stone].GetDefaultState());
+                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:stone"]);
                 }
                 else if (leftClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, m_CellStateManagerRef.GetDefaultState(m_CellStateManagerRef.Sand));
+                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:sand"]);
                     else
                     {
-                        SetState(x, y, m_CellStateManagerRef.GetDefaultState(m_CellStateManagerRef.Fresh_Water));
+                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:fresh_water"]);
                         SetMass(x, y, .5f);
                     }
                 }
@@ -207,22 +208,18 @@ namespace Common.FluidSimulation.Cellular_Automata
                 Colors = GridStates.Colors,
                 CellStates = CellStateManager.Instance.CellStatesBlobMap,
             };
-
-            JobHandle updateHandle = updateStates.ScheduleParallel(Count, 64, this.Dependency);
+            JobHandle updateHandle = updateStates.ScheduleParallel(Count, 1, this.Dependency);
             updateHandle.Complete();
             Grid.SetMeshColors(GridStates.Colors.Reinterpret<Vector4>().ToArray());
         }
     }
 
 
-
+    [BurstCompile]
     public struct UpdateTileStates : IJobFor
     {
-        [ReadOnly] public static readonly float4 BLACK = new(0f, 0f, 0f, 1f);
-        [ReadOnly] public static readonly float4 WHITE = new(1f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 CYAN = new(0f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 BLUE = new(0f, 0f, 1f, 1f);
-        [ReadOnly] public static readonly float4 SAND_COLOR = new(.2f, .5f, .5f, 1f);
 
         [ReadOnly] public BlobAssetReference<CellStatesBlobHashMap> CellStates;
         [ReadOnly] public float MinMass;
@@ -230,30 +227,27 @@ namespace Common.FluidSimulation.Cellular_Automata
         public NativeArray<CellStateData> States;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<float4> Colors;
 
-        [ReadOnly] static readonly FixedString64 AIR = new("default:air");
-        [ReadOnly] static readonly FixedString64 WATER = new("default:fresh_water");
-        [ReadOnly] static readonly FixedString64 SAND = new("default:sand");
-        [ReadOnly] static readonly FixedString64 STONE = new("default:stone");
-
         public void Execute(int index)
         {
-            var state = States[index];
-            if (!state.IsSolid)
+            if (!States[index].IsSolid)
             {
                 if (Mass[index] >= MinMass)
                 {
-                    States[index] = CellStates.Value.CellStates[new FixedString64("default:fresh_water")];
+                    States[index] = CellStates.Value.CellStates["default:fresh_water"];
                 }
                 else
                 {
-                    States[index] = CellStates.Value.CellStates[new FixedString64("default:air")];
+                    States[index] = CellStates.Value.CellStates["default:air"];
                 }
             }
+            else
+                Mass[index] = 0f;
 
-            if (state.Equals(CellStates.Value.CellStates[STONE])) SetColor(index, BLACK);
-            else if (state.Equals(CellStates.Value.CellStates[AIR])) SetColor(index, WHITE);
-            else if (state.Equals(CellStates.Value.CellStates[SAND])) SetColor(index, SAND_COLOR);
-            else SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
+            var state = States[index];
+            if (state.Equals(CellStates.Value.CellStates["default:fresh_water"]))
+                SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
+            else
+                SetColor(index, state.CellColor);
         }
 
         private void SetColor(int index, float4 color)
@@ -266,6 +260,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         }
     }
 
+    [BurstCompile]
     public struct SandSimulationJob : IJobFor
     {
         [ReadOnly] public int Width, Height;
@@ -279,14 +274,14 @@ namespace Common.FluidSimulation.Cellular_Automata
             int x = index % Width;
             int y = index / Width;
             // If downwards falling blocks (sand) are at the bottom of map, they have nowhere to go.
-            if (!InBounds(x, y - 1) || States[index].Equals(CellStates.Value.CellStates[new FixedString64("default:sand")])) return;
+            if (!InBounds(x, y - 1) || !States[index].Equals(CellStates.Value.CellStates["default:sand"])) return;
 
             int down = GetCellId(x, y - 1);
             if (!States[down].IsSolid)
             {
                 // Handle downwards movement
                 NewStates[down] = States[index];
-                NewStates[index] = CellStates.Value.CellStates[new FixedString64("default:air")];
+                NewStates[index] = CellStates.Value.CellStates["default:air"];
             }
             else {
                 if (FallLeft)
@@ -296,7 +291,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle leftward movement
                         NewStates[left] = States[index];
-                        NewStates[index] = CellStates.Value.CellStates[new FixedString64("default:air")]; ;
+                        NewStates[index] = CellStates.Value.CellStates["default:air"]; ;
                     }
                 }
                 else
@@ -306,7 +301,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle rightward movement
                         NewStates[right] = States[index];
-                        NewStates[index] = CellStates.Value.CellStates[new FixedString64("default:air")];
+                        NewStates[index] = CellStates.Value.CellStates["default:air"];
                     }
                 }
             }
@@ -328,6 +323,7 @@ namespace Common.FluidSimulation.Cellular_Automata
 
     }
 
+    [BurstCompile]
     public struct SimulationJob : IJobFor
     {
         [ReadOnly] public int Width, Height;
