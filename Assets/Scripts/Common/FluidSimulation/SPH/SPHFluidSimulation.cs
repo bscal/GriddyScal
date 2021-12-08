@@ -1,7 +1,6 @@
 ﻿using Common.FluidSimulation.SPH;
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Physics;
 using Unity.Mathematics;
 using Unity.Transforms;
 using Unity.Rendering;

@@ -98,10 +98,10 @@ public class TileMap2DArray : MonoBehaviour
         mesh.triangles = trianglesJob.Triangles.ToArray();
 
         uvHandle.Complete();
-        mesh.SetUVs(0, uvJob.UVs.ToArray());
+        mesh.SetUVs(0, uvJob.UVs);
 
         cHandler.Complete();
-        mesh.SetUVs(1, cJob.UVs.ToArray());
+        mesh.SetUVs(1, cJob.UVs);
 
         // free
         vertices.Dispose();
@@ -174,6 +174,11 @@ public class TileMap2DArray : MonoBehaviour
     }
 
     public void SetMeshColors(Vector4[] uvs)
+    {
+        m_MeshFilter.mesh.SetUVs(1, uvs);
+    }
+
+    public void SetMeshColors(NativeArray<Vector4> uvs)
     {
         m_MeshFilter.mesh.SetUVs(1, uvs);
     }

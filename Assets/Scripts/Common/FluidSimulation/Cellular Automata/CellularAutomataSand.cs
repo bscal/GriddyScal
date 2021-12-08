@@ -23,6 +23,10 @@ namespace Common.FluidSimulation.Cellular_Automata
         public NativeArray<CellStateData> NewStates;
         public NativeArray<float4> Colors;
 
+        public static readonly int FRESH_WATER = Utils.Utils.GetStableHashCode("default:fresh_water");
+        public static readonly int SAND = Utils.Utils.GetStableHashCode("default:sand");
+        public static readonly int AIR = Utils.Utils.GetStableHashCode("default:air");
+
         private void Awake()
         {
             States = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
@@ -193,7 +197,9 @@ namespace Common.FluidSimulation.Cellular_Automata
                 FallLeft = (m_FallingLeft = !m_FallingLeft),
                 States = GridStates.States,
                 NewStates = GridStates.NewStates,
-                CellStates = CellStateManager.Instance.CellStatesBlobMap,
+                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
+                AIR = CellularAutomataSand.AIR,
+                SAND = CellularAutomataSand.SAND
             };
             JobHandle sandSimHandle = sandSimJob.ScheduleParallel(Count, 1, this.Dependency);
             sandSimHandle.Complete();
@@ -206,11 +212,14 @@ namespace Common.FluidSimulation.Cellular_Automata
                 Mass = Mass,
                 States = GridStates.States,
                 Colors = GridStates.Colors,
-                CellStates = CellStateManager.Instance.CellStatesBlobMap,
+                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
+                AIR = CellularAutomataSand.AIR,
+                FRESH_WATER = CellularAutomataSand.FRESH_WATER
+
             };
             JobHandle updateHandle = updateStates.ScheduleParallel(Count, 1, this.Dependency);
             updateHandle.Complete();
-            Grid.SetMeshColors(GridStates.Colors.Reinterpret<Vector4>().ToArray());
+            Grid.SetMeshColors(GridStates.Colors.Reinterpret<Vector4>());
         }
     }
 
@@ -221,30 +230,36 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public static readonly float4 CYAN = new(0f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 BLUE = new(0f, 0f, 1f, 1f);
 
-        [ReadOnly] public BlobAssetReference<CellStatesBlobHashMap> CellStates;
+        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
         [ReadOnly] public float MinMass;
         public NativeArray<float> Mass;
         public NativeArray<CellStateData> States;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<float4> Colors;
 
+        [ReadOnly] public int FRESH_WATER;
+        [ReadOnly] public int AIR;
+
         public void Execute(int index)
         {
-            if (!States[index].IsSolid)
+
+            var state = States[index];
+            if (!state.IsSolid)
             {
                 if (Mass[index] >= MinMass)
                 {
-                    States[index] = CellStates.Value.CellStates["default:fresh_water"];
+                    States[index] = CellStates.Value.States[FRESH_WATER];
                 }
                 else
                 {
-                    States[index] = CellStates.Value.CellStates["default:air"];
+                    States[index] = CellStates.Value.States[AIR];
                 }
             }
             else
                 Mass[index] = 0f;
 
-            var state = States[index];
-            if (state.Equals(CellStates.Value.CellStates["default:fresh_water"]))
+            // Get any updated values
+            state = States[index];
+            if (state.Equals(CellStates.Value.States[FRESH_WATER]))
                 SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
             else
                 SetColor(index, state.CellColor);
@@ -266,22 +281,26 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public int Width, Height;
         [ReadOnly] public bool FallLeft;
         [ReadOnly] public NativeArray<CellStateData> States;
-        [ReadOnly] public BlobAssetReference<CellStatesBlobHashMap> CellStates;
+        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<CellStateData> NewStates;
+
+
+        [ReadOnly] public int SAND;
+        [ReadOnly] public int AIR;
 
         public void Execute(int index)
         {
             int x = index % Width;
             int y = index / Width;
             // If downwards falling blocks (sand) are at the bottom of map, they have nowhere to go.
-            if (!InBounds(x, y - 1) || !States[index].Equals(CellStates.Value.CellStates["default:sand"])) return;
+            if (!InBounds(x, y - 1) || !States[index].Equals(CellStates.Value.States[SAND])) return;
 
             int down = GetCellId(x, y - 1);
             if (!States[down].IsSolid)
             {
                 // Handle downwards movement
                 NewStates[down] = States[index];
-                NewStates[index] = CellStates.Value.CellStates["default:air"];
+                NewStates[index] = CellStates.Value.States[AIR];
             }
             else {
                 if (FallLeft)
@@ -291,7 +310,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle leftward movement
                         NewStates[left] = States[index];
-                        NewStates[index] = CellStates.Value.CellStates["default:air"]; ;
+                        NewStates[index] = CellStates.Value.States[AIR];
                     }
                 }
                 else
@@ -301,7 +320,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle rightward movement
                         NewStates[right] = States[index];
-                        NewStates[index] = CellStates.Value.CellStates["default:air"];
+                        NewStates[index] = CellStates.Value.States[AIR];
                     }
                 }
             }
@@ -319,8 +338,6 @@ namespace Common.FluidSimulation.Cellular_Automata
             y = math.clamp(y, 0, Height - 1);
             return x + y * Width;
         }
-
-
     }
 
     [BurstCompile]

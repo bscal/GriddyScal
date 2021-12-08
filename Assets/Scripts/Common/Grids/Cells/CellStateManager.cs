@@ -5,6 +5,8 @@ using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
 using BlobHashMaps;
+using System;
+using Common.Utils;
 
 namespace Common.Grids.Cells
 {
@@ -24,6 +26,7 @@ namespace Common.Grids.Cells
 
         public BlobAssetReference<CellStatesBlobAsset> CellStatesBlobReference { get; private set; }
         public BlobAssetReference<CellStatesBlobHashMap> CellStatesBlobMap { get; private set; }
+        public BlobAssetReference<CellStateIdMap> CellStatesBlobIdMap { get; private set; }
 
         public CellStateData GetDefaultState(ushort index) => Cells[index].GetDefaultState();
 
@@ -33,6 +36,7 @@ namespace Common.Grids.Cells
 
             BlobBuilder blobArrayBuilder = new(Allocator.Temp);
             BlobBuilder blobMapBuilder = new(Allocator.Temp);
+            BlobBuilder blobMapIdBuilder = new(Allocator.Temp);
 
             ref CellStatesBlobAsset cellStatesBlobAsset = ref blobArrayBuilder.ConstructRoot<CellStatesBlobAsset>();
             var array = blobArrayBuilder.Allocate(ref cellStatesBlobAsset.CellStates, Cells.Length);
@@ -40,11 +44,16 @@ namespace Common.Grids.Cells
             ref var cellStatesHashMap = ref blobMapBuilder.ConstructRoot<CellStatesBlobHashMap>();
             var map = blobMapBuilder.AllocateHashMap(ref cellStatesHashMap.CellStates, Cells.Length);
 
+            ref var cellStatesIdMap = ref blobMapIdBuilder.ConstructRoot<CellStateIdMap>();
+            var idMap = blobMapIdBuilder.AllocateHashMap(ref cellStatesIdMap.States, Cells.Length);
+            
+
             for (int i = 0; i < Cells.Length; i++)
             {
                 var state = Cells[i].GetDefaultState();
                 array[i] = state;
                 map.Add(Cells[i].NamespacedKey.Value, state);
+                idMap.Add(Cells[i].NamespacedKey.Value.GetStableHashCode(), state);
             }
 
             CellStatesBlobReference = blobArrayBuilder.CreateBlobAssetReference<CellStatesBlobAsset>(Allocator.Persistent);
@@ -52,6 +61,9 @@ namespace Common.Grids.Cells
 
             CellStatesBlobMap = blobMapBuilder.CreateBlobAssetReference<CellStatesBlobHashMap>(Allocator.Persistent);
             blobMapBuilder.Dispose();
+
+            CellStatesBlobIdMap = blobMapIdBuilder.CreateBlobAssetReference<CellStateIdMap>(Allocator.Persistent);
+            blobMapIdBuilder.Dispose();
         }
     }
 
@@ -62,6 +74,11 @@ namespace Common.Grids.Cells
 
     public struct CellStatesBlobHashMap
     {
-        public BlobHashMap<FixedString64, CellStateData> CellStates;
+        public BlobHashMap<FixedString32, CellStateData> CellStates;
+    }
+
+    public struct CellStateIdMap
+    {
+        public BlobHashMap<int, CellStateData> States;
     }
 }
