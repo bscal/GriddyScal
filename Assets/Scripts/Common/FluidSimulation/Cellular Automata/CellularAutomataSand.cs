@@ -21,7 +21,6 @@ namespace Common.FluidSimulation.Cellular_Automata
 
         public NativeArray<CellStateData> States;
         public NativeArray<CellStateData> NewStates;
-        public NativeArray<float4> Colors;
 
         public static readonly int FRESH_WATER = Utils.Utils.GetStableHashCode("default:fresh_water");
         public static readonly int SAND = Utils.Utils.GetStableHashCode("default:sand");
@@ -31,7 +30,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         {
             States = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
             NewStates = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
-            Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
+            //Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
 
             m_TilePhysicsSystem = World.DefaultGameObjectInjectionWorld.CreateSystem<TilePhysicsSystem>();
             m_TilePhysicsSystem.Grid = Grid;
@@ -47,7 +46,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         {
             States.Dispose();
             NewStates.Dispose();
-            Colors.Dispose();
+            //Colors.Dispose();
         }
 
         // Update is called once per frame
@@ -211,7 +210,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 MinMass = MinMass,
                 Mass = Mass,
                 States = GridStates.States,
-                Colors = GridStates.Colors,
+                Colors = Grid.Colors,
                 CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
                 AIR = CellularAutomataSand.AIR,
                 FRESH_WATER = CellularAutomataSand.FRESH_WATER
@@ -219,7 +218,9 @@ namespace Common.FluidSimulation.Cellular_Automata
             };
             JobHandle updateHandle = updateStates.ScheduleParallel(Count, 1, this.Dependency);
             updateHandle.Complete();
-            Grid.SetMeshColors(GridStates.Colors.Reinterpret<Vector4>());
+
+            Grid.AreColorsDirty = true;
+            //Grid.SetMeshColors(Grid.Colors);
         }
     }
 
@@ -241,7 +242,6 @@ namespace Common.FluidSimulation.Cellular_Automata
 
         public void Execute(int index)
         {
-
             var state = States[index];
             if (!state.IsSolid)
             {

@@ -1,7 +1,9 @@
 using Common.Grids;
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
@@ -35,6 +37,11 @@ public class TileMap2DArray : MonoBehaviour
 
     private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
+    public NativeArray<float4> Colors;
+    public bool AreColorsDirty;
+
+    private int m_Size4;
+
     private void Awake()
     {
 #if DEBUG
@@ -43,11 +50,11 @@ public class TileMap2DArray : MonoBehaviour
         UnityEngine.Assertions.Assert.IsFalse(TileSize.x < 1 || TileSize.y < 1);
         UnityEngine.Assertions.Assert.IsFalse(MapSize.x < 1 || MapSize.y < 1);
 #endif
-
         m_Watch.Start();
 
         Size = MapSize.x * MapSize.y;
-        uint seed = (uint)Random.Range(int.MinValue, int.MaxValue);
+        m_Size4 = Size * 4;
+        uint seed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
         m_Random = new Unity.Mathematics.Random(seed);
 
         Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed}");
@@ -59,8 +66,9 @@ public class TileMap2DArray : MonoBehaviour
         Mesh mesh = new Mesh {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
+        mesh.MarkDynamic();
 
-        NativeArray<Vector3> vertices = new NativeArray<Vector3>(Size * VERTEX_COUNT, Allocator.TempJob);
+        NativeArray<Vector3> vertices = new NativeArray<Vector3>(m_Size4, Allocator.TempJob);
         GenVerticiesJob verticiesJob = new GenVerticiesJob {
             MapSize = MapSize,
             TileSize = TileSize,
@@ -68,7 +76,7 @@ public class TileMap2DArray : MonoBehaviour
         };
         var verticesHandle = verticiesJob.Schedule();
 
-        NativeArray<Vector3> uvs = new NativeArray<Vector3>(Size * VERTEX_COUNT, Allocator.TempJob);
+        NativeArray<Vector3> uvs = new NativeArray<Vector3>(m_Size4, Allocator.TempJob);
         GenTextureUVJob uvJob = new GenTextureUVJob {
             Seed = m_Random,
             MapSize = MapSize,
@@ -76,7 +84,7 @@ public class TileMap2DArray : MonoBehaviour
         };
         var uvHandle = uvJob.Schedule();
 
-        NativeArray<Vector4> colors = new(Size * VERTEX_COUNT, Allocator.TempJob);
+        NativeArray<Vector4> colors = new(m_Size4, Allocator.TempJob);
         GenColorUVs cJob = new() {
             MapSize = MapSize,
             UVs = colors,
@@ -109,19 +117,49 @@ public class TileMap2DArray : MonoBehaviour
         colors.Dispose();
         triangles.Dispose();
 
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
         m_MeshFilter.mesh = mesh;
+
         gameObject.SetActive(true);
 
         var collider = gameObject.AddComponent<BoxCollider>();
         collider.size = new(MapSize.x, MapSize.y, .01f);
 
+        Colors = new NativeArray<float4>(m_Size4, Allocator.Persistent);
+        //Colors = new float4[Size * 4];
+
         m_Watch.Stop();
         Debug.Log($"TileMap2DArray took: {m_Watch.ElapsedMilliseconds}ms to Awake()");
     }
 
+    private void Start()
+    {
+        StartCoroutine(TryUpdateColors());
+    }
+
+
+    private void OnDestroy()
+    {
+        Colors.Dispose();
+    }
+
     void Update()
     {
+    }
 
+    public IEnumerator TryUpdateColors()
+    {
+        while (true)
+        {
+            if (AreColorsDirty)
+            {
+                SetMeshColors(Colors);
+                AreColorsDirty = false;
+                yield return null;
+            }
+            yield return null;
+        }
     }
 
     public List<Vector3> GetTileUVs()
@@ -143,6 +181,25 @@ public class TileMap2DArray : MonoBehaviour
         uvs[offset + 1] = new Vector3(0, 1, terrainId);
         uvs[offset + 2] = new Vector3(1, 1, terrainId);
         uvs[offset + 3] = new Vector3(1, 0, terrainId);
+    }
+
+    public void SetTileUVs(Vector3[] uvs)
+    {
+        m_MeshFilter.mesh.SetUVs(0, uvs);
+    }
+
+    public void SetTileUVs(NativeArray<float3> uvs)
+    {
+        m_MeshFilter.mesh.SetUVs(0, uvs);
+    }
+
+    public void SetTileTerrain(int tile, int terrainId, NativeArray<float3> uvs)
+    {
+        int offset = tile * VERTEX_COUNT;
+        uvs[offset + 0] = new float3(0, 0, terrainId);
+        uvs[offset + 1] = new float3(0, 1, terrainId);
+        uvs[offset + 2] = new float3(1, 1, terrainId);
+        uvs[offset + 3] = new float3(1, 0, terrainId);
     }
 
     /**
@@ -178,9 +235,9 @@ public class TileMap2DArray : MonoBehaviour
         m_MeshFilter.mesh.SetUVs(1, uvs);
     }
 
-    public void SetMeshColors(NativeArray<Vector4> uvs)
+    public void SetMeshColors(NativeArray<float4> uvs)
     {
-        m_MeshFilter.mesh.SetUVs(1, uvs);
+        m_MeshFilter.mesh.SetUVs(1, uvs, 0, m_Size4, UnityEngine.Rendering.MeshUpdateFlags.DontNotifyMeshUsers | UnityEngine.Rendering.MeshUpdateFlags.DontValidateIndices | UnityEngine.Rendering.MeshUpdateFlags.DontResetBoneBounds | UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds);
     }
 
     public void SetColor(int tile, Color color, in List<Vector4> uvs)

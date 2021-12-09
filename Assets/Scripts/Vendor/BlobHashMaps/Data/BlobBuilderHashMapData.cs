@@ -9,14 +9,12 @@
 #endif
 
 using System;
-using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using UnityEditor.Compilation;
 
 namespace BlobHashMaps.Data
 {
-    internal ref struct BlobBuilderHashMapData<TKey, TValue> 
+    internal ref struct BlobBuilderHashMapData<TKey, TValue>
         where TKey : struct, IEquatable<TKey>
         where TValue : struct
     {
@@ -35,18 +33,18 @@ namespace BlobHashMaps.Data
         internal bool TryAdd(TKey key, TValue item, bool multi)
         {
             ref int c = ref count[0];
-            
+
 #if BLOBHASHMAP_SAFE
             if (c >= keyCapacity)
                 throw new InvalidOperationException("HashMap is full");
 #endif
-            
+
             int bucket = key.GetHashCode() & bucketCapacityMask;
-           
+
             if (!multi && ContainsKey(bucket, key))
                 return false;
 
-            
+
             int index = c++;
             keys[index] = key;
             values[index] = item;
@@ -67,7 +65,7 @@ namespace BlobHashMaps.Data
             int index = buckets[bucket];
             if (index < 0)
                 return false;
-            
+
             while (!keys[index].Equals(key))
             {
                 index = next[index];
@@ -79,7 +77,7 @@ namespace BlobHashMaps.Data
         }
 
         internal int Count => count[0];
-        
+
         internal void Clear()
         {
             for (int i = 0; i < buckets.Length; i++)
@@ -91,22 +89,22 @@ namespace BlobHashMaps.Data
         internal BlobBuilderHashMapData(int capacity, int bucketCapacityRatio, ref BlobBuilder blobBuilder, ref BlobHashMapData<TKey, TValue> data)
         {
             int bucketCapacity = math.ceilpow2(capacity * bucketCapacityRatio);
-            
+
             // bucketCapacityMask is neccessary for retrieval so set it on the data too
             this.bucketCapacityMask = data.bucketCapacityMask = bucketCapacity - 1;
             this.keyCapacity = capacity;
-           
+
             values = blobBuilder.Allocate(ref data.values, capacity);
             keys = blobBuilder.Allocate(ref data.keys, capacity);
             next = blobBuilder.Allocate(ref data.next, capacity);
             buckets = blobBuilder.Allocate(ref data.buckets, bucketCapacity);
-            
+
             // so far the only way I've found to modify the true count on the data itself (without using unsafe code)
             // is by storing it in an array we can still access in the Add method.
             // count is only used in GetKeyArray and GetValueArray to size the array to the true count instead of capacity
             // count and keyCapacity are like
             count = blobBuilder.Allocate(ref data.count, 1);
-     
+
             Clear();
         }
     }

@@ -18,6 +18,10 @@ builds/
 *.log
 Debug/
 
+# Temp exclude
+Packages/com.unity.entities@0.17.0-preview.42/
+Assets/Materials/
+
 Assets/Plugins
 Assets/Plugins/Steamworks.NET
 Assets/Editor/Steamworks.NET
