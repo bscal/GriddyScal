@@ -37,6 +37,10 @@ public class TileMap2DArray : MonoBehaviour
 
     private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
+    public NativeList<Chunk> LoadedChunks;
+    public NativeHashMap<long, Chunk> ChunkMap;
+
+    public NativeArray<Chunk> Chunks;
     public NativeArray<float4> Colors;
     public bool AreColorsDirty;
 
@@ -160,6 +164,34 @@ public class TileMap2DArray : MonoBehaviour
             }
             yield return null;
         }
+    }
+
+    public static long XYToKey(int x, int y) => (long)y << 32 | (long)x;
+
+    public static Vector2Int KeyToXY(long key) => new((int)(key & 0xff), (int)(key >> 32));
+
+    public CellStateData GetCellState(int cellX, int cellY)
+    {
+        int x = cellX % MapSize.x;
+        int y = cellY / MapSize.y;
+        long key = XYToKey(x, y);
+        Chunk chunk = ChunkMap[key];
+
+        int xx = x % chunk.Width;
+        int yy = y / chunk.height;
+        return chunk.Cells[xx + yy * chunk.Width];
+    }
+
+    public void SetCellState(int cellX, int cellY, CellStateData data)
+    {
+        int x = cellX % MapSize.x;
+        int y = cellY / MapSize.y;
+        long key = XYToKey(x, y);
+        Chunk chunk = ChunkMap[key];
+
+        int xx = x % chunk.Width;
+        int yy = y / chunk.height;
+        chunk.Cells[xx + yy * chunk.Width] = data;
     }
 
     public List<Vector3> GetTileUVs()
