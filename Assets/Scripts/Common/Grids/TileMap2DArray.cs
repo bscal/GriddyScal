@@ -28,6 +28,10 @@ public class TileMap2DArray : MonoBehaviour
     public Vector2Int MapSize;
     [SerializeField]
     public Vector2Int TileSize;
+    public int ChunkSize;
+
+    public GameObject ChunkPrefab;
+    public Mesh ChunkMesh;
 
     public int Size { get; protected set; }
 
@@ -37,22 +41,27 @@ public class TileMap2DArray : MonoBehaviour
 
     private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
-    public NativeList<Chunk> LoadedChunks;
-    public NativeHashMap<long, Chunk> ChunkMap;
+    public NativeList<ChunkData> Chunks;
+    public Dictionary<long, Chunk> ChunkMap;
+    public List<Chunk> ChunkList;
 
-    public NativeArray<Chunk> Chunks;
+
     public NativeArray<float4> Colors;
     public bool AreColorsDirty;
+
+
 
     private int m_Size4;
 
     private void Awake()
     {
 #if DEBUG
+        UnityEngine.Assertions.Assert.IsNotNull(ChunkPrefab);
         UnityEngine.Assertions.Assert.IsNotNull(Material);
         UnityEngine.Assertions.Assert.IsFalse(TextureTileSize.x < 1 || TextureTileSize.y < 1);
         UnityEngine.Assertions.Assert.IsFalse(TileSize.x < 1 || TileSize.y < 1);
         UnityEngine.Assertions.Assert.IsFalse(MapSize.x < 1 || MapSize.y < 1);
+        UnityEngine.Assertions.Assert.IsFalse(MapSize.x % ChunkSize != 0 || MapSize.y % ChunkSize == 0);
 #endif
         m_Watch.Start();
 
@@ -61,18 +70,24 @@ public class TileMap2DArray : MonoBehaviour
         uint seed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
         m_Random = new Unity.Mathematics.Random(seed);
 
-        Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed}");
+        Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed} | ChunkSize: {ChunkSize}");
 
-        m_MeshFilter = gameObject.AddComponent<MeshFilter>();
-        m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
-        m_MeshRenderer.sharedMaterial = Material;
+        Chunks = new NativeList<ChunkData>(Allocator.Persistent); 
+        ChunkMap = new Dictionary<long, Chunk>();
+        ChunkList = new List<Chunk>();
+
+        //m_MeshFilter = gameObject.AddComponent<MeshFilter>();
+        //m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
+        //m_MeshRenderer.sharedMaterial = Material;
 
         Mesh mesh = new Mesh {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
         mesh.MarkDynamic();
 
-        NativeArray<Vector3> vertices = new NativeArray<Vector3>(m_Size4, Allocator.TempJob);
+        int chunks = Size / ChunkSize;
+
+        NativeArray<Vector3> vertices = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
         GenVerticiesJob verticiesJob = new GenVerticiesJob {
             MapSize = MapSize,
             TileSize = TileSize,
@@ -80,7 +95,7 @@ public class TileMap2DArray : MonoBehaviour
         };
         var verticesHandle = verticiesJob.Schedule();
 
-        NativeArray<Vector3> uvs = new NativeArray<Vector3>(m_Size4, Allocator.TempJob);
+        NativeArray<Vector3> uvs = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
         GenTextureUVJob uvJob = new GenTextureUVJob {
             Seed = m_Random,
             MapSize = MapSize,
@@ -88,14 +103,14 @@ public class TileMap2DArray : MonoBehaviour
         };
         var uvHandle = uvJob.Schedule();
 
-        NativeArray<Vector4> colors = new(m_Size4, Allocator.TempJob);
+        NativeArray<Vector4> colors = new(chunks * 4, Allocator.TempJob);
         GenColorUVs cJob = new() {
             MapSize = MapSize,
             UVs = colors,
         };
         var cHandler = cJob.Schedule();
 
-        NativeArray<int> triangles = new NativeArray<int>(Size * 6, Allocator.TempJob);
+        NativeArray<int> triangles = new NativeArray<int>(chunks * 6, Allocator.TempJob);
         GenTrianglesJob trianglesJob = new GenTrianglesJob {
             MapSize = MapSize,
             Triangles = triangles
@@ -123,15 +138,40 @@ public class TileMap2DArray : MonoBehaviour
 
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
-        m_MeshFilter.mesh = mesh;
+        //m_MeshFilter.mesh = mesh;
+        ChunkMesh = mesh;
+        
+
+        //var collider = gameObject.AddComponent<BoxCollider>();
+        //collider.size = new(MapSize.x, MapSize.y, .01f);
+
+
+
+        for (int y = 0; y < MapSize.y / ChunkSize; y += ChunkSize)
+        {
+            for (int x = 0; x < MapSize.x / ChunkSize; x += ChunkSize)
+            {
+                var go = Instantiate(ChunkPrefab, gameObject.transform);
+
+                Chunk chunk = new Chunk(x, y, ChunkSize, ChunkSize);
+                chunk.Create(go, ChunkMesh, Material);
+                chunk.State = ChunkState.LOADED;
+
+                long key = chunk.GetKey();
+
+                ChunkMap.Add(key, chunk);
+                Chunks.Add(new ChunkData()
+                {
+                    ChunkKey = key,
+                    State = chunk.State,
+                });
+            }
+        }
+
+        //Colors = new NativeArray<float4>(m_Size4, Allocator.Persistent);
+        //Colors = new float4[Size * 4];
 
         gameObject.SetActive(true);
-
-        var collider = gameObject.AddComponent<BoxCollider>();
-        collider.size = new(MapSize.x, MapSize.y, .01f);
-
-        Colors = new NativeArray<float4>(m_Size4, Allocator.Persistent);
-        //Colors = new float4[Size * 4];
 
         m_Watch.Stop();
         Debug.Log($"TileMap2DArray took: {m_Watch.ElapsedMilliseconds}ms to Awake()");
@@ -145,11 +185,13 @@ public class TileMap2DArray : MonoBehaviour
 
     private void OnDestroy()
     {
-        Colors.Dispose();
+        //Colors.Dispose();
+        Chunks.Clear();
     }
 
     void Update()
     {
+        
     }
 
     public IEnumerator TryUpdateColors()
@@ -178,7 +220,7 @@ public class TileMap2DArray : MonoBehaviour
         Chunk chunk = ChunkMap[key];
 
         int xx = x % chunk.Width;
-        int yy = y / chunk.height;
+        int yy = y / chunk.Height;
         return chunk.Cells[xx + yy * chunk.Width];
     }
 
@@ -190,7 +232,7 @@ public class TileMap2DArray : MonoBehaviour
         Chunk chunk = ChunkMap[key];
 
         int xx = x % chunk.Width;
-        int yy = y / chunk.height;
+        int yy = y / chunk.Height;
         chunk.Cells[xx + yy * chunk.Width] = data;
     }
 

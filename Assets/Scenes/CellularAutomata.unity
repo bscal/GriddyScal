@@ -404,6 +404,9 @@ MonoBehaviour:
   TextureTileSize: {x: 16, y: 16}
   MapSize: {x: 128, y: 128}
   TileSize: {x: 1, y: 1}
+  ChunkSize: 32
+  ChunkPrefab: {fileID: 3266875475172960159, guid: 961c56adece2f244faab884e3226e25c, type: 3}
+  ChunkMesh: {fileID: 0}
   AreColorsDirty: 0
 --- !u!4 &1150643228
 Transform:
