@@ -45,11 +45,10 @@ public class TileMap2DArray : MonoBehaviour
     public Dictionary<long, Chunk> ChunkMap;
     public List<Chunk> ChunkList;
 
+    public NativeArray<CellStateData> CellStates;
 
     public NativeArray<float4> Colors;
     public bool AreColorsDirty;
-
-
 
     private int m_Size4;
 
@@ -75,6 +74,7 @@ public class TileMap2DArray : MonoBehaviour
         Chunks = new NativeList<ChunkData>(Allocator.Persistent); 
         ChunkMap = new Dictionary<long, Chunk>();
         ChunkList = new List<Chunk>();
+        CellStates = new(Size, Allocator.Persistent);
 
         //m_MeshFilter = gameObject.AddComponent<MeshFilter>();
         //m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
@@ -191,7 +191,21 @@ public class TileMap2DArray : MonoBehaviour
 
     void Update()
     {
-        
+        NativeArray<JobHandle> chunkJobs = new(ChunkList.Count, Allocator.Temp);
+
+        foreach (Chunk chunk in ChunkList)
+        {
+            chunk.Process();
+        }
+
+        JobHandle.CompleteAll(chunkJobs);
+
+        foreach (Chunk chunk in ChunkList)
+        {
+            chunk.UpdateMesh();
+        }
+
+        chunkJobs.Dispose();
     }
 
     public IEnumerator TryUpdateColors()
