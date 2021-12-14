@@ -1,5 +1,7 @@
-﻿using System.Collections;
+﻿using Common.Grids.Cells;
+using System.Collections;
 using Unity.Collections;
+using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
@@ -11,7 +13,6 @@ namespace Common.Grids
     {
         public ChunkState State;
         public long ChunkKey;
-        public NativeArray<CellStateData> Cells;
     }
 
     public static class ChunkManager
@@ -50,22 +51,18 @@ namespace Common.Grids
         public TileMap2DArray Grid;
         private bool m_FallingLeft;
 
-        public Chunk()
-        { 
+        public Chunk(int x, int y, int w, int h)
+        {
+            this.x = x;
+            this.y = y;
+            this.Width = w;
+            this.Height = h;
             int size = Width * Height;
             Colors = new(size * 4, Allocator.Persistent);
             Cells = new(size, Allocator.Persistent);
             NewCells = new(size, Allocator.Persistent);
             Mass = new(size, Allocator.Persistent);
             NewMass = new(size, Allocator.Persistent);
-        }
-
-        public Chunk(int x, int y, int w, int h) : this()
-        {
-            this.x = x;
-            this.y = y;
-            this.Width = w;
-            this.Height = h;
         }
 
         ~Chunk()
@@ -93,12 +90,34 @@ namespace Common.Grids
             collider.size = new(Width, Height, .01f);
         }
 
-        public void Process()
+        public JobHandle StartUpdate()
         {
+            UpdateChunkJob job = new UpdateChunkJob
+            {
+                MapWidth = Grid.MapSize.x,
+                MapHeight = Grid.MapSize.y,
+                Width = Width,
+                Height = Height,
+                MaxCompression = MaxCompression,
+                MaxMass = MaxMass,
+                MinMass = MinMass,
+                MaxMassSqr = MaxMass * MaxMass,
+                MaxSpeed = MaxSpeed,
+                MinFlow = MinFlow,
+                Cells = Grid.CellStates,
+                NewCells = NewCells,
+                Mass = Mass,
+                NewMass = NewMass,
+                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
+                Sand = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:sand"],
+                Air = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:air"],
+            };
+            return job.Schedule();
         }
 
         public void UpdateMesh()
         {
+            MeshFilter.mesh.SetUVs(1, Colors);
             if (IsDirty)
             {
                 IsDirty = false;
@@ -156,11 +175,14 @@ namespace Common.Grids
         [ReadOnly] public float MinFlow;
         [ReadOnly] public float MaxSpeed;
         [ReadOnly] public float MaxMassSqr;
-        [ReadOnly] public NativeHashMap<long, ChunkData> ChunkMap;
         [ReadOnly] public NativeArray<CellStateData> Cells;
         public NativeArray<CellStateData> NewCells;
         [ReadOnly] public NativeArray<float> Mass;
         public NativeArray<float> NewMass;
+        [ReadOnly] public bool FallLeft;
+        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
+        [ReadOnly] public CellStateData Sand;
+        [ReadOnly] public CellStateData Air;
 
         public void Execute()
         {
@@ -169,69 +191,115 @@ namespace Common.Grids
                 for (int x = 0; x < Width; x++)
                 {
                     int index = GetCellId(x, y);
-                    float remainingMass = Mass[index];
-                    if (remainingMass <= 0) return;
-                    if (Cells[index].IsSolid) return;
-                    float flow;
-                    // Down
-                    int downId = GetCellId(x, y - 1);
-                    if (InBounds(x, y - 1) && !Cells[downId].IsSolid)
+                    
+                    if (Cells[index].IsSolid && Cells[index].Equals(CellStates.Value.States[0]))
                     {
-                        flow = GetStableMass(remainingMass + Mass[downId]) - Mass[downId];
-                        if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                        flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
-                        NewMass[index] -= flow;
-                        NewMass[downId] += flow;
-                        remainingMass -= flow;
+                        SimulateSand(x, y, index);
                     }
-                    if (remainingMass <= 0)
-                        return;
-
-                    // Left
-                    int leftId = GetCellId(x - 1, y);
-                    if (InBounds(x - 1, y) && !Cells[leftId].IsSolid)
+                    else
                     {
-                        flow = (Mass[index] - Mass[leftId]) / 4;
-                        if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                        flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
-                        NewMass[index] -= flow;
-                        NewMass[leftId] += flow;
-                        remainingMass -= flow;
+                        SimulateFluid(x, y, index);
                     }
-
-                    if (remainingMass <= 0)
-                        return;
-                    // Right
-                    int rightId = GetCellId(x + 1, y);
-                    if (InBounds(x + 1, y) && !Cells[rightId].IsSolid)
-                    {
-                        flow = (Mass[index] - Mass[rightId]) / 4;
-                        if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                        flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
-                        NewMass[index] -= flow;
-                        NewMass[rightId] += flow;
-                        remainingMass -= flow;
-
-                    }
-
-                    if (remainingMass <= 0)
-                        return;
-
-                    // Up
-                    int upId = GetCellId(x, y + 1);
-                    if (InBounds(x, y + 1) && !Cells[upId].IsSolid)
-                    {
-                        flow = remainingMass - GetStableMass(remainingMass + Mass[upId]);
-                        if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
-                        flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
-                        NewMass[index] -= flow;
-                        NewMass[upId] += flow;
-                    }
-
                 }
             }
+        }
 
-            
+        private void SimulateFluid(int x, int y, int index)
+        {
+            float remainingMass = Mass[index];
+            if (remainingMass <= 0) return;
+            if (Cells[index].IsSolid) return;
+            float flow;
+            // Down
+            int downId = GetCellId(x, y - 1);
+            if (InBounds(x, y - 1) && !Cells[downId].IsSolid)
+            {
+                flow = GetStableMass(remainingMass + Mass[downId]) - Mass[downId];
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[downId] += flow;
+                remainingMass -= flow;
+            }
+            if (remainingMass <= 0)
+                return;
+
+            // Left
+            int leftId = GetCellId(x - 1, y);
+            if (InBounds(x - 1, y) && !Cells[leftId].IsSolid)
+            {
+                flow = (Mass[index] - Mass[leftId]) / 4;
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[leftId] += flow;
+                remainingMass -= flow;
+            }
+
+            if (remainingMass <= 0)
+                return;
+            // Right
+            int rightId = GetCellId(x + 1, y);
+            if (InBounds(x + 1, y) && !Cells[rightId].IsSolid)
+            {
+                flow = (Mass[index] - Mass[rightId]) / 4;
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[rightId] += flow;
+                remainingMass -= flow;
+
+            }
+
+            if (remainingMass <= 0)
+                return;
+
+            // Up
+            int upId = GetCellId(x, y + 1);
+            if (InBounds(x, y + 1) && !Cells[upId].IsSolid)
+            {
+                flow = remainingMass - GetStableMass(remainingMass + Mass[upId]);
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[upId] += flow;
+            }
+        }
+
+        private void SimulateSand(int x, int y, int index)
+        {
+            if (!InBounds(x, y - 1)) return;
+
+            int down = GetCellId(x, y - 1);
+            if (!Cells[down].IsSolid)
+            {
+                // Handle downwards movement
+                NewCells[down] = Cells[index];
+                NewCells[index] = Air;
+            }
+            else
+            {
+                if (FallLeft)
+                {
+                    int left = GetCellId(x - 1, y - 1);
+                    if (InBounds(x - 1, y - 1) && !Cells[left].IsSolid)
+                    {
+                        // Handle leftward movement
+                        NewCells[left] = Cells[index];
+                        NewCells[index] = Air;
+                    }
+                }
+                else
+                {
+                    int right = GetCellId(x + 1, y - 1);
+                    if (InBounds(x + 1, y - 1) && !Cells[right].IsSolid)
+                    {
+                        // Handle rightward movement
+                        NewCells[right] = Cells[index];
+                        NewCells[index] = Air;
+                    }
+                }
+            }
         }
 
         private float GetStableMass(float totalMass)
@@ -244,38 +312,32 @@ namespace Common.Grids
 
         public bool InBounds(int x, int y)
         {
-            return x > -1 && y > -1 && x < Width && y < Height;
+            return x > -1 && y > -1 && x < MapWidth && y < MapHeight;
         }
 
         public int GetCellId(int x, int y)
         {
-            x = math.clamp(x, 0, Width - 1);
-            y = math.clamp(y, 0, Height - 1);
-            return x + y * Width;
+            x = math.clamp(x, 0, MapWidth - 1);
+            y = math.clamp(y, 0, MapHeight - 1);
+            return x + y * MapWidth;
         }
 
         public CellStateData GetCellState(int cellX, int cellY)
         {
             int x = cellX % MapWidth;
             int y = cellY / MapHeight;
-            long key = XYToKey(x, y);
-            bool found = ChunkMap.TryGetValue(key, out ChunkData chunkData);
-
             int xx = x % Width;
             int yy = y / Height;
-            return chunkData.Cells[xx + yy * Width];
+            return Cells[x + y * Width];
         }
 
         public void SetCellState(int cellX, int cellY, CellStateData data)
         {
             int x = cellX % MapWidth;
             int y = cellY / MapHeight;
-            long key = XYToKey(x, y);
-            bool found = ChunkMap.TryGetValue(key, out ChunkData chunkData);
-
             int xx = x % Width;
             int yy = y / Height;
-            chunkData.Cells[xx + yy * Width] = data;
+            Cells[x + y * Width] = data;
         }
 
         public long XYToKey(int x, int y) => (long)y << 32 | (long)x;

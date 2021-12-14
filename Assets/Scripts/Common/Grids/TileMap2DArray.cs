@@ -1,11 +1,12 @@
 using Common.Grids;
+using Common.Grids.Cells;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEditor;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /**
  * <summary>
@@ -13,7 +14,7 @@ using UnityEngine;
  * UVs are Vector3 where the z value is used for the array index
  * </summary>
  */
-public class TileMap2DArray : MonoBehaviour
+public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 {
     private const int VERTEX_COUNT = 4;
 
@@ -45,6 +46,8 @@ public class TileMap2DArray : MonoBehaviour
     public Dictionary<long, Chunk> ChunkMap;
     public List<Chunk> ChunkList;
 
+    //public NativeHashMap<long, ChunkData> ChunkHashMap;
+    //public NativeMultiHashMap<long, CellStateData> ChunkMultiHashMap;
     public NativeArray<CellStateData> CellStates;
 
     public NativeArray<float4> Colors;
@@ -57,10 +60,6 @@ public class TileMap2DArray : MonoBehaviour
 #if DEBUG
         UnityEngine.Assertions.Assert.IsNotNull(ChunkPrefab);
         UnityEngine.Assertions.Assert.IsNotNull(Material);
-        UnityEngine.Assertions.Assert.IsFalse(TextureTileSize.x < 1 || TextureTileSize.y < 1);
-        UnityEngine.Assertions.Assert.IsFalse(TileSize.x < 1 || TileSize.y < 1);
-        UnityEngine.Assertions.Assert.IsFalse(MapSize.x < 1 || MapSize.y < 1);
-        UnityEngine.Assertions.Assert.IsFalse(MapSize.x % ChunkSize != 0 || MapSize.y % ChunkSize == 0);
 #endif
         m_Watch.Start();
 
@@ -71,48 +70,55 @@ public class TileMap2DArray : MonoBehaviour
 
         Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed} | ChunkSize: {ChunkSize}");
 
-        Chunks = new NativeList<ChunkData>(Allocator.Persistent); 
+        Chunks = new NativeList<ChunkData>(Allocator.Persistent);
         ChunkMap = new Dictionary<long, Chunk>();
         ChunkList = new List<Chunk>();
         CellStates = new(Size, Allocator.Persistent);
+        //ChunkMultiHashMap = new(Size, Allocator.Persistent);
 
         //m_MeshFilter = gameObject.AddComponent<MeshFilter>();
         //m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
         //m_MeshRenderer.sharedMaterial = Material;
 
-        Mesh mesh = new Mesh {
+        Mesh mesh = new Mesh
+        {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
         mesh.MarkDynamic();
 
-        int chunks = Size / ChunkSize;
+        Vector2Int ChunkMapSize = new(ChunkSize, ChunkSize);
+        int chunks = MapSize.x * MapSize.y;
 
         NativeArray<Vector3> vertices = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
-        GenVerticiesJob verticiesJob = new GenVerticiesJob {
-            MapSize = MapSize,
+        GenVerticiesJob verticiesJob = new GenVerticiesJob
+        {
+            MapSize = ChunkMapSize,
             TileSize = TileSize,
             Verticies = vertices
         };
         var verticesHandle = verticiesJob.Schedule();
 
         NativeArray<Vector3> uvs = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
-        GenTextureUVJob uvJob = new GenTextureUVJob {
+        GenTextureUVJob uvJob = new GenTextureUVJob
+        {
             Seed = m_Random,
-            MapSize = MapSize,
+            MapSize = ChunkMapSize,
             UVs = uvs
         };
         var uvHandle = uvJob.Schedule();
 
         NativeArray<Vector4> colors = new(chunks * 4, Allocator.TempJob);
-        GenColorUVs cJob = new() {
-            MapSize = MapSize,
+        GenColorUVs cJob = new()
+        {
+            MapSize = ChunkMapSize,
             UVs = colors,
         };
         var cHandler = cJob.Schedule();
 
         NativeArray<int> triangles = new NativeArray<int>(chunks * 6, Allocator.TempJob);
-        GenTrianglesJob trianglesJob = new GenTrianglesJob {
-            MapSize = MapSize,
+        GenTrianglesJob trianglesJob = new GenTrianglesJob
+        {
+            MapSize = ChunkMapSize,
             Triangles = triangles
         };
         var trianglesHandle = trianglesJob.Schedule();
@@ -140,20 +146,19 @@ public class TileMap2DArray : MonoBehaviour
         mesh.RecalculateBounds();
         //m_MeshFilter.mesh = mesh;
         ChunkMesh = mesh;
-        
 
         //var collider = gameObject.AddComponent<BoxCollider>();
         //collider.size = new(MapSize.x, MapSize.y, .01f);
 
 
 
-        for (int y = 0; y < MapSize.y / ChunkSize; y += ChunkSize)
+        for (int y = 0; y < ChunkMapSize.y; y++)
         {
-            for (int x = 0; x < MapSize.x / ChunkSize; x += ChunkSize)
+            for (int x = 0; x < ChunkMapSize.x; x++)
             {
                 var go = Instantiate(ChunkPrefab, gameObject.transform);
 
-                Chunk chunk = new Chunk(x, y, ChunkSize, ChunkSize);
+                Chunk chunk = new Chunk(x * ChunkSize, y * ChunkSize, ChunkSize, ChunkSize);
                 chunk.Create(go, ChunkMesh, Material);
                 chunk.State = ChunkState.LOADED;
 
@@ -165,6 +170,7 @@ public class TileMap2DArray : MonoBehaviour
                     ChunkKey = key,
                     State = chunk.State,
                 });
+
             }
         }
 
@@ -186,16 +192,21 @@ public class TileMap2DArray : MonoBehaviour
     private void OnDestroy()
     {
         //Colors.Dispose();
-        Chunks.Clear();
+        Chunks.Dispose();
+        CellStates.Dispose();
+        //ChunkMultiHashMap.Dispose();
     }
 
     void Update()
     {
+        HandleInputs();
+
         NativeArray<JobHandle> chunkJobs = new(ChunkList.Count, Allocator.Temp);
 
+        int i = 0;
         foreach (Chunk chunk in ChunkList)
         {
-            chunk.Process();
+            chunkJobs[i++] = chunk.StartUpdate();
         }
 
         JobHandle.CompleteAll(chunkJobs);
@@ -206,6 +217,50 @@ public class TileMap2DArray : MonoBehaviour
         }
 
         chunkJobs.Dispose();
+    }
+
+    private void HandleInputs()
+    {
+        bool rightClicked = Mouse.current.rightButton.wasPressedThisFrame;
+        bool leftClicked = Mouse.current.leftButton.isPressed;
+        bool middleClicked = Mouse.current.middleButton.wasPressedThisFrame;
+
+        if (!rightClicked && !leftClicked && !middleClicked) return;
+
+        var camera = Camera.main;
+        var ray = camera.ScreenPointToRay(Mouse.current.position.ReadValue());
+
+        if (Physics.Raycast(ray, out RaycastHit hit, 100.0f))
+        {
+            var diff = hit.point - transform.position;
+            int x = (int)diff.x;
+            int y = (int)diff.y;
+
+            bool shiftHeld = Keyboard.current.leftShiftKey.isPressed;
+
+
+            if (rightClicked)
+            {
+                if (shiftHeld)
+                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:air"]);
+                else
+                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:stone"]);
+            }
+            else if (leftClicked)
+            {
+                if (shiftHeld)
+                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:sand"]);
+                else
+                {
+                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:fresh_water"]);
+                    SetCellMass(x, y, .5f);
+                }
+            }
+            else if (middleClicked)
+            {
+                //MarkAsInfiniteSource(x, y);
+            }
+        }
     }
 
     public IEnumerator TryUpdateColors()
@@ -228,26 +283,39 @@ public class TileMap2DArray : MonoBehaviour
 
     public CellStateData GetCellState(int cellX, int cellY)
     {
-        int x = cellX % MapSize.x;
-        int y = cellY / MapSize.y;
+        int x = cellX / 32;
+        int y = cellY / 32;
         long key = XYToKey(x, y);
         Chunk chunk = ChunkMap[key];
 
         int xx = x % chunk.Width;
         int yy = y / chunk.Height;
-        return chunk.Cells[xx + yy * chunk.Width];
+        return CellStates[xx + yy * chunk.Width];
     }
 
     public void SetCellState(int cellX, int cellY, CellStateData data)
     {
-        int x = cellX % MapSize.x;
-        int y = cellY / MapSize.y;
+        int x = cellX / 32;
+        int y = cellY / 32;
         long key = XYToKey(x, y);
         Chunk chunk = ChunkMap[key];
 
         int xx = x % chunk.Width;
         int yy = y / chunk.Height;
-        chunk.Cells[xx + yy * chunk.Width] = data;
+        CellStates[xx + yy * chunk.Width] = data;
+    }
+
+
+    public void SetCellMass(int cellX, int cellY, float mass)
+    {
+        int x = cellX / 32;
+        int y = cellY / 32;
+        long key = XYToKey(x, y);
+        Chunk chunk = ChunkMap[key];
+
+        int xx = x % chunk.Width;
+        int yy = y / chunk.Height;
+        chunk.Mass[xx + yy * chunk.Width] = mass;
     }
 
     public List<Vector3> GetTileUVs()
@@ -338,6 +406,21 @@ public class TileMap2DArray : MonoBehaviour
         uvs[offset + 3] = vec4;
     }
 
+    public void OnBeforeSerialize()
+    {
+    }
+
+    public void OnAfterDeserialize()
+    {
+        if (TextureTileSize.x < 1 || TextureTileSize.y < 1)
+            Debug.LogError("TextureTileSize is less then 1");
+        if (TileSize.x < 1 || TileSize.y < 1)
+            Debug.LogError("TileSize is less then 1");
+        if (MapSize.x < 1 || MapSize.y < 1)
+            Debug.LogError("MapSize is less then 1");
+        if (MapSize.x % ChunkSize != 0 || MapSize.y % ChunkSize != 0)
+            Debug.LogError($"ChunkSize does not match MapSize: X {MapSize.x}, Y {MapSize.y}, Chunk {ChunkSize}");
+    }
 }
 
 public struct GenTextureUVJob : IJob
@@ -398,7 +481,8 @@ public struct GenTileArray : IJob
             for (int x = 0; x < MapSize.x; x++)
             {
                 float d = Seed.NextFloat(.25f, .75f);
-                Tiles[x + y * MapSize.x] = new FluidTile() {
+                Tiles[x + y * MapSize.x] = new FluidTile()
+                {
                     Velocity = Vector3.one,
                     PrevVelocity = Vector3.one,
                     Density = d,

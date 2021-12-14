@@ -52,10 +52,10 @@ namespace Common.FluidSimulation.Cellular_Automata
         // Update is called once per frame
         void Update()
         {
-            HandleInputs();
+            //HandleInputs();
             if (m_TilePhysicsSystem.Enabled)
             {
-                m_TilePhysicsSystem.Update();
+                //m_TilePhysicsSystem.Update();
             }
         }
 
@@ -302,7 +302,8 @@ namespace Common.FluidSimulation.Cellular_Automata
                 NewStates[down] = States[index];
                 NewStates[index] = CellStates.Value.States[AIR];
             }
-            else {
+            else
+            {
                 if (FallLeft)
                 {
                     int left = GetCellId(x - 1, y - 1);
