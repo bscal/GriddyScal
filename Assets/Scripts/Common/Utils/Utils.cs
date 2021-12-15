@@ -93,6 +93,16 @@ namespace Common.Utils
             Value = Namespace + ":" + Id;
         }
 
+        public override bool Equals(object obj)
+        {
+            return obj is NamespacedKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(Namespace, Id);
+        }
+
         public static bool operator ==(NamespacedKey l, NamespacedKey r)
         {
             return l.Equals(r);
