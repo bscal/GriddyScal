@@ -1,64 +1,53 @@
-Shader "Unlit/Terrain"
+Shader "Surface/Terrain"
 {
 	Properties
 	{
 		_Color("Color", Color) = (1,1,1,1)
 		_MainTex("Terrain Texture Array", 2DArray) = "white" {}
+		_Glossiness("Smoothness", Range(0,1)) = 0.5
+		_Metallic("Metallic", Range(0,1)) = 0.0
 	}
-	SubShader
-	{
-		Tags { "RenderType" = "Opaque" }
-		LOD 100
-
-		Pass
+		SubShader
 		{
+			Tags { "RenderType" = "Opaque" }
+			LOD 200
+
 			CGPROGRAM
-			#pragma vertex vert
-			#pragma fragment frag
-			#pragma multi_compile_fog
+			#pragma surface surf Standard fullforwardshadows vertex:vert
 			#pragma target 3.0
+
 			#pragma require 2darray
-
-			#include "UnityCG.cginc"
-
-			struct appdata
-			{
-				float4 vertex : POSITION;
-				float3 uv : TEXCOORD0;
-				float4 color : TEXCOORD1;
-			};
-
-			struct v2f
-			{
-				float3 uv : TEXCOORD0;
-				UNITY_FOG_COORDS(1)
-				float4 vertex : SV_POSITION;
-				float4 color : TEXCOORD1;
-			};
-
 			UNITY_DECLARE_TEX2DARRAY(_MainTex);
 
+			struct Input
+			{
+				float2 uv_MainTex;
+				float4 color : COLOR;
+				float terrain; // TODO convert mainTex to vec3 and add terrain as z?
+			};
+
+			half _Glossiness;
+			half _Metallic;
 			fixed4 _Color;
-			float4 _MainTex_ST;
 
-			v2f vert(appdata v)
+			UNITY_INSTANCING_BUFFER_START(Props)
+			UNITY_INSTANCING_BUFFER_END(Props)
+
+			void vert(inout appdata_full v, out Input data)
 			{
-				v2f o;
-				o.vertex = UnityObjectToClipPos(v.vertex);
-				o.uv = v.uv
-				UNITY_TRANSFER_FOG(o,o.vertex);
-				o.color = v.color;
-				return o;
+				UNITY_INITIALIZE_OUTPUT(Input, data);
+				data.terrain = v.texcoord.z;
 			}
 
-			fixed4 frag(v2f i) : SV_Target
+			void surf(Input IN, inout SurfaceOutputStandard o)
 			{
-				fixed4 col = UNITY_SAMPLE_TEX2DARRAY(_MainTex, i.uv) * _Color * i.color;
-				// apply fog
-				UNITY_APPLY_FOG(i.fogCoord, col);
-				return col;
+				fixed4 c = UNITY_SAMPLE_TEX2DARRAY(_MainTex, float3(IN.uv_MainTex, IN.terrain));
+				o.Albedo = c.rgb * _Color;
+				o.Metallic = _Metallic;
+				o.Smoothness = _Glossiness;
+				o.Alpha = c.a;
 			}
-		ENDCG
+			ENDCG
 		}
-	}
+			FallBack "Diffuse"
 }

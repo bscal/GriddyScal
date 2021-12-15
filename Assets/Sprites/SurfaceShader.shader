@@ -1,4 +1,4 @@
-Shader "Surface/Terrain"
+Shader "Tile"
 {
 	Properties
 	{
@@ -52,7 +52,7 @@ Shader "Surface/Terrain"
 				// Produces a good texture resolution when fully zoomed
 				//float2 uv = IN.worldPos.xy;
 				fixed4 c = UNITY_SAMPLE_TEX2DARRAY(_MainTex, float3(IN.uv_MainTex, IN.terrain));
-				o.Albedo = c.rgb * _Color;
+				o.Albedo = c.rgb * _Color * IN.color;
 				o.Metallic = _Metallic;
 				o.Smoothness = _Glossiness;
 				o.Alpha = c.a;
