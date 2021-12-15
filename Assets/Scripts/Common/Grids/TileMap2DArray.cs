@@ -1,3 +1,4 @@
+using Common.FluidSimulation.Cellular_Automata;
 using Common.Grids;
 using Common.Grids.Cells;
 using System.Collections;
@@ -32,7 +33,8 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
     public int ChunkSize;
 
     public GameObject ChunkPrefab;
-    public Mesh ChunkMesh;
+
+    public CellularAutomataSand States;
 
     public int Size { get; protected set; }
 
@@ -42,18 +44,10 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
     private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
-    public NativeList<ChunkData> Chunks;
     public Dictionary<long, Chunk> ChunkMap;
     public List<Chunk> ChunkList;
 
-    //public NativeHashMap<long, ChunkData> ChunkHashMap;
-    //public NativeMultiHashMap<long, CellStateData> ChunkMultiHashMap;
-    public NativeArray<CellStateData> CellStates;
-
-    public NativeArray<float4> Colors;
-    public bool AreColorsDirty;
-
-    private int m_Size4;
+    public NativeHashMap<long, ChunkData> NativeChunkMap;
 
     private void Awake()
     {
@@ -64,30 +58,22 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
         m_Watch.Start();
 
         Size = MapSize.x * MapSize.y;
-        m_Size4 = Size * 4;
+        Vector2Int ChunkMapSize = new(ChunkSize, ChunkSize);
+        int chunks = ChunkSize * ChunkSize;
         uint seed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
         m_Random = new Unity.Mathematics.Random(seed);
 
         Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed} | ChunkSize: {ChunkSize}");
 
-        Chunks = new NativeList<ChunkData>(Allocator.Persistent);
+        NativeChunkMap = new NativeHashMap<long, ChunkData>(chunks, Allocator.Persistent);
         ChunkMap = new Dictionary<long, Chunk>();
         ChunkList = new List<Chunk>();
-        CellStates = new(Size, Allocator.Persistent);
-        //ChunkMultiHashMap = new(Size, Allocator.Persistent);
-
-        //m_MeshFilter = gameObject.AddComponent<MeshFilter>();
-        //m_MeshRenderer = gameObject.AddComponent<MeshRenderer>();
-        //m_MeshRenderer.sharedMaterial = Material;
 
         Mesh mesh = new Mesh
         {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
         mesh.MarkDynamic();
-
-        Vector2Int ChunkMapSize = new(ChunkSize, ChunkSize);
-        int chunks = MapSize.x * MapSize.y;
 
         NativeArray<Vector3> vertices = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
         GenVerticiesJob verticiesJob = new GenVerticiesJob
@@ -144,179 +130,50 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
-        //m_MeshFilter.mesh = mesh;
-        ChunkMesh = mesh;
 
-        //var collider = gameObject.AddComponent<BoxCollider>();
-        //collider.size = new(MapSize.x, MapSize.y, .01f);
-
-
-
-        for (int y = 0; y < ChunkMapSize.y; y++)
+        for (int y = 0; y < MapSize.y / ChunkMapSize.y; y++)
         {
-            for (int x = 0; x < ChunkMapSize.x; x++)
+            for (int x = 0; x < MapSize.x / ChunkMapSize.x; x++)
             {
                 var go = Instantiate(ChunkPrefab, gameObject.transform);
 
-                Chunk chunk = new Chunk(x * ChunkSize, y * ChunkSize, ChunkSize, ChunkSize);
-                chunk.Create(go, ChunkMesh, Material);
+                Chunk chunk = new(this, x, y, ChunkSize, ChunkSize);
+                chunk.Create(go, mesh, Material);
                 chunk.State = ChunkState.LOADED;
 
-                long key = chunk.GetKey();
+                long key = XYToKey(x, y);
 
-                ChunkMap.Add(key, chunk);
-                Chunks.Add(new ChunkData()
+                NativeChunkMap[key] = new ChunkData()
                 {
-                    ChunkKey = key,
                     State = chunk.State,
-                });
-
+                };
+                ChunkMap.Add(key, chunk);
+                ChunkList.Add(chunk);
             }
         }
-
-        //Colors = new NativeArray<float4>(m_Size4, Allocator.Persistent);
-        //Colors = new float4[Size * 4];
-
         gameObject.SetActive(true);
-
         m_Watch.Stop();
         Debug.Log($"TileMap2DArray took: {m_Watch.ElapsedMilliseconds}ms to Awake()");
     }
 
-    private void Start()
-    {
-        StartCoroutine(TryUpdateColors());
-    }
-
-
     private void OnDestroy()
     {
-        //Colors.Dispose();
-        Chunks.Dispose();
-        CellStates.Dispose();
-        //ChunkMultiHashMap.Dispose();
+        NativeChunkMap.Dispose();
     }
 
     void Update()
     {
-        HandleInputs();
-
-        NativeArray<JobHandle> chunkJobs = new(ChunkList.Count, Allocator.Temp);
-
-        int i = 0;
         foreach (Chunk chunk in ChunkList)
         {
-            chunkJobs[i++] = chunk.StartUpdate();
-        }
-
-        JobHandle.CompleteAll(chunkJobs);
-
-        foreach (Chunk chunk in ChunkList)
-        {
-            chunk.UpdateMesh();
-        }
-
-        chunkJobs.Dispose();
-    }
-
-    private void HandleInputs()
-    {
-        bool rightClicked = Mouse.current.rightButton.wasPressedThisFrame;
-        bool leftClicked = Mouse.current.leftButton.isPressed;
-        bool middleClicked = Mouse.current.middleButton.wasPressedThisFrame;
-
-        if (!rightClicked && !leftClicked && !middleClicked) return;
-
-        var camera = Camera.main;
-        var ray = camera.ScreenPointToRay(Mouse.current.position.ReadValue());
-
-        if (Physics.Raycast(ray, out RaycastHit hit, 100.0f))
-        {
-            var diff = hit.point - transform.position;
-            int x = (int)diff.x;
-            int y = (int)diff.y;
-
-            bool shiftHeld = Keyboard.current.leftShiftKey.isPressed;
-
-
-            if (rightClicked)
-            {
-                if (shiftHeld)
-                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:air"]);
-                else
-                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:stone"]);
-            }
-            else if (leftClicked)
-            {
-                if (shiftHeld)
-                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:sand"]);
-                else
-                {
-                    SetCellState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:fresh_water"]);
-                    SetCellMass(x, y, .5f);
-                }
-            }
-            else if (middleClicked)
-            {
-                //MarkAsInfiniteSource(x, y);
-            }
-        }
-    }
-
-    public IEnumerator TryUpdateColors()
-    {
-        while (true)
-        {
-            if (AreColorsDirty)
-            {
-                SetMeshColors(Colors);
-                AreColorsDirty = false;
-                yield return null;
-            }
-            yield return null;
+            if (chunk.IsDirty)
+                chunk.UpdateMesh();
+            chunk.UpdateState();
         }
     }
 
     public static long XYToKey(int x, int y) => (long)y << 32 | (long)x;
 
     public static Vector2Int KeyToXY(long key) => new((int)(key & 0xff), (int)(key >> 32));
-
-    public CellStateData GetCellState(int cellX, int cellY)
-    {
-        int x = cellX / 32;
-        int y = cellY / 32;
-        long key = XYToKey(x, y);
-        Chunk chunk = ChunkMap[key];
-
-        int xx = x % chunk.Width;
-        int yy = y / chunk.Height;
-        return CellStates[xx + yy * chunk.Width];
-    }
-
-    public void SetCellState(int cellX, int cellY, CellStateData data)
-    {
-        int x = cellX / 32;
-        int y = cellY / 32;
-        long key = XYToKey(x, y);
-        Chunk chunk = ChunkMap[key];
-
-        int xx = x % chunk.Width;
-        int yy = y / chunk.Height;
-        CellStates[xx + yy * chunk.Width] = data;
-    }
-
-
-    public void SetCellMass(int cellX, int cellY, float mass)
-    {
-        int x = cellX / 32;
-        int y = cellY / 32;
-        long key = XYToKey(x, y);
-        Chunk chunk = ChunkMap[key];
-
-        int xx = x % chunk.Width;
-        int yy = y / chunk.Height;
-        chunk.Mass[xx + yy * chunk.Width] = mass;
-    }
 
     public List<Vector3> GetTileUVs()
     {
@@ -393,7 +250,7 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
     public void SetMeshColors(NativeArray<float4> uvs)
     {
-        m_MeshFilter.mesh.SetUVs(1, uvs, 0, m_Size4, UnityEngine.Rendering.MeshUpdateFlags.DontNotifyMeshUsers | UnityEngine.Rendering.MeshUpdateFlags.DontValidateIndices | UnityEngine.Rendering.MeshUpdateFlags.DontResetBoneBounds | UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds);
+        m_MeshFilter.mesh.SetUVs(1, uvs, 0, Size * 4, UnityEngine.Rendering.MeshUpdateFlags.DontNotifyMeshUsers | UnityEngine.Rendering.MeshUpdateFlags.DontValidateIndices | UnityEngine.Rendering.MeshUpdateFlags.DontResetBoneBounds | UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds);
     }
 
     public void SetColor(int tile, Color color, in List<Vector4> uvs)

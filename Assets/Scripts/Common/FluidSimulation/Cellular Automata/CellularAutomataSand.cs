@@ -16,7 +16,7 @@ namespace Common.FluidSimulation.Cellular_Automata
     {
         public TileMap2DArray Grid;
 
-        private TilePhysicsSystem m_TilePhysicsSystem;
+        public TilePhysicsSystem m_TilePhysicsSystem;
         private CellStateManager m_CellStateManagerRef;
 
         public NativeArray<CellStateData> States;
@@ -30,7 +30,6 @@ namespace Common.FluidSimulation.Cellular_Automata
         {
             States = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
             NewStates = new NativeArray<CellStateData>(Grid.Size, Allocator.Persistent);
-            //Colors = new NativeArray<float4>(Grid.Size * 4, Allocator.Persistent);
 
             m_TilePhysicsSystem = World.DefaultGameObjectInjectionWorld.CreateSystem<TilePhysicsSystem>();
             m_TilePhysicsSystem.Grid = Grid;
@@ -46,16 +45,15 @@ namespace Common.FluidSimulation.Cellular_Automata
         {
             States.Dispose();
             NewStates.Dispose();
-            //Colors.Dispose();
         }
 
         // Update is called once per frame
         void Update()
         {
-            //HandleInputs();
+            HandleInputs();
             if (m_TilePhysicsSystem.Enabled)
             {
-                //m_TilePhysicsSystem.Update();
+                m_TilePhysicsSystem.Update();
             }
         }
 
@@ -166,9 +164,11 @@ namespace Common.FluidSimulation.Cellular_Automata
 
         protected override void OnUpdate()
         {
+            m_FallingLeft = !m_FallingLeft;
             NewMass.CopyFrom(Mass);
+            GridStates.NewStates.CopyFrom(GridStates.States);
 
-            SimulationJob simulateCompressionJob = new()
+/*            SimulationJob simulateCompressionJob = new()
             {
                 Width = Grid.MapSize.x,
                 Height = Grid.MapSize.y,
@@ -217,10 +217,44 @@ namespace Common.FluidSimulation.Cellular_Automata
 
             };
             JobHandle updateHandle = updateStates.ScheduleParallel(Count, 1, this.Dependency);
-            updateHandle.Complete();
+            updateHandle.Complete();*/
 
-            Grid.AreColorsDirty = true;
-            //Grid.SetMeshColors(Grid.Colors);
+
+            UpdateChunkJob updateJob = new UpdateChunkJob
+            {
+                ChunkSize = Grid.ChunkSize,
+                MapWidth = Grid.MapSize.x,
+                MapHeight = Grid.MapSize.y,
+                MaxCompression = MaxCompression,
+                MaxMass = MaxMass,
+                MinMass = MinMass,
+                MaxMassSqr = MaxMass * MaxMass,
+                MaxSpeed = MaxSpeed,
+                MinFlow = MinFlow,
+                FallLeft = m_FallingLeft,
+                Cells = GridStates.States,
+                NewCells = GridStates.NewStates,
+                Mass = Mass,
+                NewMass = NewMass,
+                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
+                Sand = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:sand"],
+                Air = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:air"],
+                Water = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:fresh_water"],
+                Chunks = Grid.NativeChunkMap,
+            };
+            JobHandle handle = updateJob.Schedule(Grid.Size, 1);
+            handle.Complete();
+
+            NewMass.CopyTo(Mass);
+            GridStates.NewStates.CopyTo(GridStates.States);
+
+            foreach (var pair in Grid.ChunkMap)
+            {
+                var chunk = Grid.NativeChunkMap[pair.Key];
+                pair.Value.IsDirty = chunk.IsDirty;
+                chunk.IsDirty = false;
+                Grid.NativeChunkMap[pair.Key] = chunk;
+            }
         }
     }
 
@@ -440,5 +474,188 @@ namespace Common.FluidSimulation.Cellular_Automata
             y = math.clamp(y, 0, Height - 1);
             return x + y * Width;
         }
+    }
+
+    [BurstCompile]
+    public struct UpdateChunkJob : IJobParallelFor
+    {
+        [ReadOnly] public int ChunkSize;
+        [ReadOnly] public int MapWidth;
+        [ReadOnly] public int MapHeight;
+        [ReadOnly] public float MaxMass;
+        [ReadOnly] public float MinMass;
+        [ReadOnly] public float MaxCompression;
+        [ReadOnly] public float MinFlow;
+        [ReadOnly] public float MaxSpeed;
+        [ReadOnly] public float MaxMassSqr;
+        [ReadOnly] public bool FallLeft;
+        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
+        [ReadOnly] public CellStateData Sand;
+        [ReadOnly] public CellStateData Air;
+        [ReadOnly] public CellStateData Water;
+        [NativeDisableParallelForRestriction] public NativeHashMap<long, ChunkData> Chunks;
+
+        [ReadOnly] public NativeArray<CellStateData> Cells;
+        [NativeDisableParallelForRestriction] [WriteOnly] public NativeArray<CellStateData> NewCells;
+
+        [ReadOnly] public NativeArray<float> Mass;
+        [NativeDisableParallelForRestriction] public NativeArray<float> NewMass;
+
+        private bool m_HasChanged;
+
+        public void Execute(int i)
+        {
+            int x = i % MapWidth;
+            int y = i / MapHeight;
+            int index = GetCellId(x, y);
+            int chunkX = x / ChunkSize;
+            int chunkY = y / ChunkSize;
+            long chunkKey = XYToKey(chunkX, chunkY);
+
+            var chunk = Chunks[chunkKey];
+            if (chunk.State != ChunkState.LOADED) return;
+
+            if (Cells[index].Equals(Sand))
+            {
+                SimulateSand(x, y, index);
+            }
+            else if (Cells[index].Equals(Water))
+            {
+                SimulateFluid(x, y, index, index);
+            }
+
+            if (m_HasChanged)
+            {
+                chunk.IsDirty = m_HasChanged;
+                Chunks[chunkKey] = chunk;
+            }
+        }
+
+        private void SimulateFluid(int x, int y, int index, int localIndex)
+        {
+            float remainingMass = Mass[localIndex];
+            if (remainingMass <= 0) return;
+            float flow;
+            // Down
+            int downId = GetCellId(x, y - 1);
+            if (InBounds(x, y - 1) && !Cells[downId].IsSolid)
+            {
+                flow = GetStableMass(remainingMass + Mass[downId]) - Mass[downId];
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[downId] += flow;
+                remainingMass -= flow;
+                m_HasChanged = true;
+            }
+            if (remainingMass <= 0)
+                return;
+
+            // Left
+            int leftId = GetCellId(x - 1, y);
+            if (InBounds(x - 1, y) && !Cells[leftId].IsSolid)
+            {
+                flow = (Mass[index] - Mass[leftId]) / 4;
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[leftId] += flow;
+                remainingMass -= flow;
+                m_HasChanged = true;
+            }
+
+            if (remainingMass <= 0)
+                return;
+            // Right
+            int rightId = GetCellId(x + 1, y);
+            if (InBounds(x + 1, y) && !Cells[rightId].IsSolid)
+            {
+                flow = (Mass[index] - Mass[rightId]) / 4;
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[rightId] += flow;
+                remainingMass -= flow;
+                m_HasChanged = true;
+            }
+
+            if (remainingMass <= 0)
+                return;
+
+            // Up
+            int upId = GetCellId(x, y + 1);
+            if (InBounds(x, y + 1) && !Cells[upId].IsSolid)
+            {
+                flow = remainingMass - GetStableMass(remainingMass + Mass[upId]);
+                if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
+                flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
+                NewMass[index] -= flow;
+                NewMass[upId] += flow;
+                m_HasChanged = true;
+            }
+        }
+
+        private void SimulateSand(int x, int y, int index)
+        {
+            if (!InBounds(x, y - 1)) return;
+
+            int down = GetCellId(x, y - 1);
+            if (!Cells[down].IsSolid)
+            {
+                // Handle downwards movement
+                NewCells[down] = Cells[index];
+                NewCells[index] = Air;
+                m_HasChanged = true;
+            }
+            else
+            {
+                if (FallLeft)
+                {
+                    int left = GetCellId(x - 1, y - 1);
+                    if (InBounds(x - 1, y - 1) && !Cells[left].IsSolid)
+                    {
+                        // Handle leftward movement
+                        NewCells[left] = Cells[index];
+                        NewCells[index] = Air;
+                        m_HasChanged = true;
+                    }
+                }
+                else
+                {
+                    int right = GetCellId(x + 1, y - 1);
+                    if (InBounds(x + 1, y - 1) && !Cells[right].IsSolid)
+                    {
+                        // Handle rightward movement
+                        NewCells[right] = Cells[index];
+                        NewCells[index] = Air;
+                        m_HasChanged = true;
+                    }
+                }
+            }
+        }
+
+        private float GetStableMass(float totalMass)
+        {
+            // All water goes to lower cell
+            if (totalMass <= 1) return 1;
+            else if (totalMass < 2 * MaxMass + MaxCompression) return (MaxMassSqr + totalMass * MaxCompression) / (MaxMass + MaxCompression);
+            else return (totalMass + MaxCompression) / 2;
+        }
+
+        private bool InBounds(int x, int y)
+        {
+            return x > -1 && y > -1 && x < MapWidth && y < MapHeight;
+        }
+
+        private int GetCellId(int x, int y)
+        {
+            x = math.clamp(x, 0, MapWidth - 1);
+            y = math.clamp(y, 0, MapHeight - 1);
+            return x + y * MapWidth;
+        }
+
+        private long XYToKey(int x, int y) => (long)y << 32 | (long)x;
+
+        private Vector2Int KeyToXY(long key) => new((int)(key & 0xff), (int)(key >> 32));
     }
 }
