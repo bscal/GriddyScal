@@ -402,13 +402,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Material: {fileID: 2100000, guid: adb22e252439b91488d2d4155a737702, type: 2}
   TextureTileSize: {x: 16, y: 16}
-  MapSize: {x: 128, y: 128}
+  MapSize: {x: 512, y: 512}
   TileSize: {x: 1, y: 1}
-  ChunkSize: 16
+  ChunkSize: 32
   ChunkPrefab: {fileID: 3266875475172960159, guid: 961c56adece2f244faab884e3226e25c, type: 3}
-  ChunkMesh: {fileID: 0}
   States: {fileID: 1150643229}
-  AreColorsDirty: 0
+  Mesh: {fileID: 0}
 --- !u!4 &1150643228
 Transform:
   m_ObjectHideFlags: 0

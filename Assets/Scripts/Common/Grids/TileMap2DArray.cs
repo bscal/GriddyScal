@@ -49,6 +49,8 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
     public NativeHashMap<long, ChunkData> NativeChunkMap;
 
+    public Mesh Mesh;
+
     private void Awake()
     {
 #if DEBUG
@@ -69,11 +71,11 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
         ChunkMap = new Dictionary<long, Chunk>();
         ChunkList = new List<Chunk>();
 
-        Mesh mesh = new Mesh
+        Mesh = new Mesh
         {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
-        mesh.MarkDynamic();
+        Mesh.MarkDynamic();
 
         NativeArray<Vector3> vertices = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
         GenVerticiesJob verticiesJob = new GenVerticiesJob
@@ -111,16 +113,16 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
         // Wait for Verticies to Finish because cant set uvs without them
         verticesHandle.Complete();
-        mesh.vertices = verticiesJob.Verticies.ToArray();
+        Mesh.vertices = verticiesJob.Verticies.ToArray();
 
         trianglesHandle.Complete();
-        mesh.triangles = trianglesJob.Triangles.ToArray();
+        Mesh.triangles = trianglesJob.Triangles.ToArray();
 
         uvHandle.Complete();
-        mesh.SetUVs(0, uvJob.UVs);
+        Mesh.SetUVs(0, uvJob.UVs);
 
         cHandler.Complete();
-        mesh.SetUVs(1, cJob.UVs);
+        Mesh.SetUVs(1, cJob.UVs);
 
         // free
         vertices.Dispose();
@@ -128,17 +130,17 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
         colors.Dispose();
         triangles.Dispose();
 
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
+        Mesh.RecalculateNormals();
+        Mesh.RecalculateBounds();
 
         for (int y = 0; y < MapSize.y / ChunkMapSize.y; y++)
         {
             for (int x = 0; x < MapSize.x / ChunkMapSize.x; x++)
             {
-                var go = Instantiate(ChunkPrefab, gameObject.transform);
+                //var go = Instantiate(ChunkPrefab, gameObject.transform);
 
                 Chunk chunk = new(this, x, y, ChunkSize, ChunkSize);
-                chunk.Create(go, mesh, Material);
+                chunk.Create();
                 chunk.State = ChunkState.LOADED;
 
                 long key = XYToKey(x, y);
@@ -168,6 +170,7 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
             if (chunk.IsDirty)
                 chunk.UpdateMesh();
             chunk.UpdateState();
+            chunk.Render();
         }
     }
 

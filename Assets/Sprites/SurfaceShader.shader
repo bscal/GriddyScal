@@ -32,13 +32,13 @@ Shader "Tile"
 
 			half _Glossiness;
 			half _Metallic;
-			fixed4 _Color;
+			// fixed4 _Color;
 
 			// Add instancing support for this shader. You need to check 'Enable Instancing' on materials that use the shader.
 			// See https://docs.unity3d.com/Manual/GPUInstancing.html for more information about instancing.
 			// #pragma instancing_options assumeuniformscaling
 			UNITY_INSTANCING_BUFFER_START(Props)
-				// put more per-instance properties here
+				UNITY_DEFINE_INSTANCED_PROP(fixed4, _Color)
 			UNITY_INSTANCING_BUFFER_END(Props)
 
 			void vert(inout appdata_full v, out Input data)
@@ -52,7 +52,7 @@ Shader "Tile"
 				// Produces a good texture resolution when fully zoomed
 				//float2 uv = IN.worldPos.xy;
 				fixed4 c = UNITY_SAMPLE_TEX2DARRAY(_MainTex, float3(IN.uv_MainTex, IN.terrain));
-				o.Albedo = c.rgb * _Color * IN.color;
+				o.Albedo = c.rgb * UNITY_ACCESS_INSTANCED_PROP(Props, _Color) * IN.color;
 				o.Metallic = _Metallic;
 				o.Smoothness = _Glossiness;
 				o.Alpha = c.a;
