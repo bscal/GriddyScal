@@ -136,9 +136,9 @@ namespace Common.Grids
         
         public void Render()
         {
-            Graphics.DrawMesh(Grid.Mesh, new Vector3(x, y), Quaternion.identity, Grid.Material, 0, null, 0, null, false, false, false);
+            //Graphics.DrawMesh(Grid.Mesh, new Vector3(x, y), Quaternion.identity, Grid.Material, 0, null, 0, PropertyBlock, false, false, false);
             //Graphics.DrawMeshInstanced(Grid.Mesh, 0, Grid.Material, Matrix, 0, PropertyBlock);
-            //Graphics.DrawMeshInstancedIndirect(Grid.Mesh, 0, Grid.Material, m_Bounds, m_ArgsBuffer, castShadows: UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false, lightProbeUsage: UnityEngine.Rendering.LightProbeUsage.Off);
+            Graphics.DrawMeshInstancedIndirect(Grid.Mesh, 0, Grid.Material, m_Bounds, m_ArgsBuffer, castShadows: UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false, lightProbeUsage: UnityEngine.Rendering.LightProbeUsage.Off);
         }
 
         public void UpdateState()
