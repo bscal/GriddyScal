@@ -44,12 +44,8 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
     private System.Diagnostics.Stopwatch m_Watch = new System.Diagnostics.Stopwatch();
 
-    public Dictionary<long, Chunk> ChunkMap;
     public List<Chunk> ChunkList;
-
     public NativeHashMap<long, ChunkData> NativeChunkMap;
-
-    public Mesh Mesh;
 
     private void Awake()
     {
@@ -68,14 +64,14 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
         Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed} | ChunkSize: {ChunkSize}");
 
         NativeChunkMap = new NativeHashMap<long, ChunkData>(chunks, Allocator.Persistent);
-        ChunkMap = new Dictionary<long, Chunk>();
+        //ChunkMap = new Dictionary<long, Chunk>();
         ChunkList = new List<Chunk>();
 
-        Mesh = new Mesh
+        Mesh mesh = new Mesh
         {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
-        Mesh.MarkDynamic();
+        mesh.MarkDynamic();
 
         NativeArray<Vector3> vertices = new NativeArray<Vector3>(chunks * 4, Allocator.TempJob);
         GenVerticiesJob verticiesJob = new GenVerticiesJob
@@ -113,16 +109,16 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
 
         // Wait for Verticies to Finish because cant set uvs without them
         verticesHandle.Complete();
-        Mesh.vertices = verticiesJob.Verticies.ToArray();
+        mesh.vertices = verticiesJob.Verticies.ToArray();
 
         trianglesHandle.Complete();
-        Mesh.triangles = trianglesJob.Triangles.ToArray();
+        mesh.triangles = trianglesJob.Triangles.ToArray();
 
         uvHandle.Complete();
-        Mesh.SetUVs(0, uvJob.UVs);
+        mesh.SetUVs(0, uvJob.UVs);
 
         cHandler.Complete();
-        Mesh.SetUVs(1, cJob.UVs);
+        mesh.SetUVs(1, cJob.UVs);
 
         // free
         vertices.Dispose();
@@ -130,17 +126,17 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
         colors.Dispose();
         triangles.Dispose();
 
-        Mesh.RecalculateNormals();
-        Mesh.RecalculateBounds();
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
 
         for (int y = 0; y < MapSize.y / ChunkMapSize.y; y++)
         {
             for (int x = 0; x < MapSize.x / ChunkMapSize.x; x++)
             {
-                //var go = Instantiate(ChunkPrefab, gameObject.transform);
+                var go = Instantiate(ChunkPrefab, gameObject.transform);
 
                 Chunk chunk = new(this, x, y, ChunkSize, ChunkSize);
-                chunk.Create();
+                chunk.Create(go, mesh, Material);
                 chunk.State = ChunkState.LOADED;
 
                 long key = XYToKey(x, y);
@@ -149,7 +145,7 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
                 {
                     State = chunk.State,
                 };
-                ChunkMap.Add(key, chunk);
+                //ChunkMap.Add(key, chunk);
                 ChunkList.Add(chunk);
             }
         }
@@ -167,10 +163,17 @@ public class TileMap2DArray : MonoBehaviour, ISerializationCallbackReceiver
     {
         foreach (Chunk chunk in ChunkList)
         {
-            if (chunk.IsDirty)
-                chunk.UpdateMesh();
             chunk.UpdateState();
-            chunk.Render();
+            if (chunk.State == ChunkState.LOADED)
+            {
+                var nativeChunk = NativeChunkMap[chunk.GetKey()];
+                if (nativeChunk.IsDirty)
+                {
+                    nativeChunk.IsDirty = false;
+                    chunk.UpdateMesh();
+                    NativeChunkMap[chunk.GetKey()] = nativeChunk;
+                }
+            }
         }
     }
 

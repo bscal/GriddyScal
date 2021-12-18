@@ -168,56 +168,56 @@ namespace Common.FluidSimulation.Cellular_Automata
             NewMass.CopyFrom(Mass);
             GridStates.NewStates.CopyFrom(GridStates.States);
 
-/*            SimulationJob simulateCompressionJob = new()
-            {
-                Width = Grid.MapSize.x,
-                Height = Grid.MapSize.y,
-                MaxMass = MaxMass,
-                MinMass = MinMass,
-                MaxCompression = MaxCompression,
-                MinFlow = MinFlow,
-                MaxSpeed = MaxSpeed,
-                MaxMassSqr = MaxMass * MaxMass,
-                Mass = Mass,
-                NewMass = NewMass,
-                States = GridStates.States,
-            };
-            JobHandle simulationHandle = simulateCompressionJob.ScheduleParallel(Count, 1, this.Dependency);
-            simulationHandle.Complete();
+            /*            SimulationJob simulateCompressionJob = new()
+                        {
+                            Width = Grid.MapSize.x,
+                            Height = Grid.MapSize.y,
+                            MaxMass = MaxMass,
+                            MinMass = MinMass,
+                            MaxCompression = MaxCompression,
+                            MinFlow = MinFlow,
+                            MaxSpeed = MaxSpeed,
+                            MaxMassSqr = MaxMass * MaxMass,
+                            Mass = Mass,
+                            NewMass = NewMass,
+                            States = GridStates.States,
+                        };
+                        JobHandle simulationHandle = simulateCompressionJob.ScheduleParallel(Count, 1, this.Dependency);
+                        simulationHandle.Complete();
 
-            NewMass.CopyTo(Mass);
+                        NewMass.CopyTo(Mass);
 
-            GridStates.NewStates.CopyFrom(GridStates.States);
+                        GridStates.NewStates.CopyFrom(GridStates.States);
 
-            SandSimulationJob sandSimJob = new()
-            {
-                Width = Grid.MapSize.x,
-                Height = Grid.MapSize.y,
-                FallLeft = (m_FallingLeft = !m_FallingLeft),
-                States = GridStates.States,
-                NewStates = GridStates.NewStates,
-                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
-                AIR = CellularAutomataSand.AIR,
-                SAND = CellularAutomataSand.SAND
-            };
-            JobHandle sandSimHandle = sandSimJob.ScheduleParallel(Count, 1, this.Dependency);
-            sandSimHandle.Complete();
+                        SandSimulationJob sandSimJob = new()
+                        {
+                            Width = Grid.MapSize.x,
+                            Height = Grid.MapSize.y,
+                            FallLeft = (m_FallingLeft = !m_FallingLeft),
+                            States = GridStates.States,
+                            NewStates = GridStates.NewStates,
+                            CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
+                            AIR = CellularAutomataSand.AIR,
+                            SAND = CellularAutomataSand.SAND
+                        };
+                        JobHandle sandSimHandle = sandSimJob.ScheduleParallel(Count, 1, this.Dependency);
+                        sandSimHandle.Complete();
 
-            GridStates.States.CopyFrom(GridStates.NewStates);
+                        GridStates.States.CopyFrom(GridStates.NewStates);
 
-            UpdateTileStates updateStates = new()
-            {
-                MinMass = MinMass,
-                Mass = Mass,
-                States = GridStates.States,
-                Colors = Grid.Colors,
-                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
-                AIR = CellularAutomataSand.AIR,
-                FRESH_WATER = CellularAutomataSand.FRESH_WATER
+                        UpdateTileStates updateStates = new()
+                        {
+                            MinMass = MinMass,
+                            Mass = Mass,
+                            States = GridStates.States,
+                            Colors = Grid.Colors,
+                            CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
+                            AIR = CellularAutomataSand.AIR,
+                            FRESH_WATER = CellularAutomataSand.FRESH_WATER
 
-            };
-            JobHandle updateHandle = updateStates.ScheduleParallel(Count, 1, this.Dependency);
-            updateHandle.Complete();*/
+                        };
+                        JobHandle updateHandle = updateStates.ScheduleParallel(Count, 1, this.Dependency);
+                        updateHandle.Complete();*/
 
 
             UpdateChunkJob updateJob = new UpdateChunkJob
@@ -247,14 +247,6 @@ namespace Common.FluidSimulation.Cellular_Automata
 
             NewMass.CopyTo(Mass);
             GridStates.NewStates.CopyTo(GridStates.States);
-
-            foreach (var pair in Grid.ChunkMap)
-            {
-                var chunk = Grid.NativeChunkMap[pair.Key];
-                pair.Value.IsDirty = chunk.IsDirty;
-                chunk.IsDirty = false;
-                Grid.NativeChunkMap[pair.Key] = chunk;
-            }
         }
     }
 
