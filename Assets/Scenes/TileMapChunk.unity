@@ -423,8 +423,8 @@ MonoBehaviour:
     x: 16
     y: 16
   MapSize:
-    x: 128
-    y: 128
+    x: 256
+    y: 256
   ChunkSize: 32
   Size: 0
   ChunkPrefab: {fileID: 3266875475172960159, guid: 961c56adece2f244faab884e3226e25c, type: 3}
