@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.jacksondunstan.native-collections": "https://github.com/jacksondunstan/NativeCollections.git",
     "com.unity.entities": "0.17.0-preview.42",
     "com.unity.feature.2d": "1.0.0",
     "com.unity.ide.rider": "3.0.7",

@@ -8,6 +8,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Collections.LowLevel.Unsafe;
+using JacksonDunstan.NativeCollections;
 
 namespace Common.Grids
 {
@@ -27,8 +29,10 @@ namespace Common.Grids
         public int ChunkSize;
         public int ChunkCellCount;
         public int MapCellCount;
-        public NativeArray<CellStateData> Cells;
+        //public NativeArray<CellStateData> Cells;
         public NativeHashMap<long, ChunkSection> Chunks;
+        public NativeChunkedList<CellStateData> Cells;
+       // public Unity.Collections.NativeHashSet<long> LoadedChunks;
 
         public ChunkMap(int2 mapSize, int2 mapSizeInChunks, int chunksPerPlayer, int chunkSize, int chunkCellCount, int mapCellCount)
         {
@@ -38,14 +42,18 @@ namespace Common.Grids
             ChunkSize = chunkSize;
             ChunkCellCount = chunkCellCount;
             MapCellCount = mapCellCount;
-            Cells = new NativeArray<CellStateData>(mapCellCount, Allocator.Persistent);
+            //Cells = new NativeArray<CellStateData>(mapCellCount, Allocator.Persistent);
             Chunks = new NativeHashMap<long, ChunkSection>(ChunksPerPlayer, Allocator.Persistent);
+            Cells = new NativeChunkedList<CellStateData>(chunkCellCount, ChunksPerPlayer, Allocator.Persistent);
+            //LoadedChunks = new Unity.Collections.NativeHashSet<long>(MapSizeInChunks.x * MapSizeInChunks.y, Allocator.Persistent);
         }
 
         public void Cleanup()
         {
             Cells.Dispose();
             Chunks.Dispose();
+            //CellStates.Dispose();
+            //LoadedChunks.Dispose();
         }
 
         public void LoadChunk(int chunkX, int chunkY)
@@ -61,6 +69,24 @@ namespace Common.Grids
                 IsDirty = true,
             };
             Chunks.Add(key, chunkSection);
+
+            int xx = chunkX * ChunkSize;
+            int yy = chunkY * ChunkSize;
+            for (int y = yy; y < yy + ChunkSize; y++)
+            {
+                for (int x = xx; x < xx + ChunkSize; x++)
+                {
+                    Cells.Insert(x + y * ChunkSize, CellStateManager.Instance.Air.GetDefaultState());
+                }
+            }
+        }
+
+        public CellStateData GetState(long chunkKey, int index)
+        {
+            if (Chunks.ContainsKey(chunkKey))
+                return Cells[index];
+
+            return new CellStateData();
         }
 
         public CellStateData GetState(int cellX, int cellY) => Cells[cellX + cellY * MapSize.x];
@@ -257,10 +283,10 @@ namespace Common.Grids
 
         private void Start()
         {
-            for (int i = 0; i < Size; i++)
-            {
-                ChunkMap.Cells[i] = CellStateManager.Instance.Air.GetDefaultState();
-            }
+            //for (int i = 0; i < Size; i++)
+            //{
+                //ChunkMap.Cells[i] = CellStateManager.Instance.Air.GetDefaultState();
+            //}
         }
         private void OnDestroy()
         {
@@ -276,7 +302,8 @@ namespace Common.Grids
 
             FallingLeft = !FallingLeft;
 
-            ChunkMap.Cells.CopyTo(NewCells);
+            ChunkMap.Cells.ToNativeArray(NewCells);
+            //ChunkMap.Cells.CopyTo(NewCells);
             Mass.CopyTo(NewMass);
 
             JobHandle lastHandle = new();
@@ -313,7 +340,8 @@ namespace Common.Grids
             JobHandle.CompleteAll(handles);
             handles.Dispose();
 
-            NewCells.CopyTo(ChunkMap.Cells);
+            ChunkMap.Cells.CopyFrom(NewCells, 0, ChunkMap.Cells.Length);
+            //NewCells.CopyTo(ChunkMap.Cells);
             NewMass.CopyTo(Mass);
             
             for (int i = 0; i < keyvalues.Length; i++)
