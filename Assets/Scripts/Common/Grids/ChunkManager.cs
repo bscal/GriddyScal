@@ -1,16 +1,15 @@
 ﻿using Common.Grids.Cells;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using Unity.Collections.LowLevel.Unsafe;
-using JacksonDunstan.NativeCollections;
-using System.Diagnostics;
 
 namespace Common.Grids
 {
@@ -25,7 +24,7 @@ namespace Common.Grids
     public unsafe struct ChunkCellData
     {
         public void* data;
-        public void* newData;
+        //public void* newData;
 
         internal int m_Length;
         internal AtomicSafetyHandle m_Safety;
@@ -49,7 +48,7 @@ namespace Common.Grids
         public unsafe void WriteNewState(int index, CellStateData state)
         {
             CheckElementWriteAccess(index);
-            UnsafeUtility.WriteArrayElement(newData, index, state);
+            //UnsafeUtility.WriteArrayElement(newData, index, state);
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -86,12 +85,8 @@ namespace Common.Grids
         public int ChunkSize;
         public int ChunkCellCount;
         public int MapCellCount;
-        //public NativeArray<CellStateData> Cells;
         public NativeHashMap<long, ChunkSection> Chunks;
         public NativeHashMap<long, ChunkCellData> CellData;
-        public NativeHashMap<long, ChunkCellData> NewCellData;
-        //public NativeChunkedList<CellStateData> Cells;
-        // public Unity.Collections.NativeHashSet<long> LoadedChunks;
 
         public ChunkMap(int2 mapSize, int2 mapSizeInChunks, int chunksPerPlayer, int chunkSize, int chunkCellCount, int mapCellCount)
         {
@@ -101,12 +96,8 @@ namespace Common.Grids
             ChunkSize = chunkSize;
             ChunkCellCount = chunkCellCount;
             MapCellCount = mapCellCount;
-            //Cells = new NativeArray<CellStateData>(mapCellCount, Allocator.Persistent);
             Chunks = new NativeHashMap<long, ChunkSection>(ChunksPerPlayer, Allocator.Persistent);
             CellData = new NativeHashMap<long, ChunkCellData>(ChunksPerPlayer, Allocator.Persistent);
-            NewCellData = new NativeHashMap<long, ChunkCellData>(ChunksPerPlayer, Allocator.Persistent);
-            //Cells = new NativeChunkedList<CellStateData>(chunkCellCount, ChunksPerPlayer, Allocator.Persistent);
-            //LoadedChunks = new Unity.Collections.NativeHashSet<long>(MapSizeInChunks.x * MapSizeInChunks.y, Allocator.Persistent);
         }
 
         public void Cleanup()
@@ -115,35 +106,27 @@ namespace Common.Grids
             {
                 UnloadChunkData(chunk.Key);
             }
-
-            //Cells.Dispose();
             CellData.Dispose();
-            NewCellData.Dispose();
             Chunks.Dispose();
-            //CellStates.Dispose();
-            //LoadedChunks.Dispose();
         }
 
         public unsafe void LoadChunkData(long key)
         {
             long num = (long)UnsafeUtility.SizeOf<CellStateData>() * (long)ChunkCellCount;
-            //NativeArray<CellStateData> data = new(ChunkCellCount, Allocator.Persistent);
-            //NativeArray<CellStateData> newData = new(ChunkCellCount, Allocator.Persistent);
-
             var data = UnsafeUtility.Malloc(num, UnsafeUtility.AlignOf<CellStateData>(), Allocator.Persistent);
-            var newData = UnsafeUtility.Malloc(num, UnsafeUtility.AlignOf<CellStateData>(), Allocator.Persistent);
+            //var newData = UnsafeUtility.Malloc(num, UnsafeUtility.AlignOf<CellStateData>(), Allocator.Persistent);
 
             var defaultState = CellStateManager.Instance.Air.GetDefaultState();
             for (int i = 0; i < ChunkCellCount; i++)
             {
                 UnsafeUtility.WriteArrayElement(data, i, defaultState);
-                UnsafeUtility.WriteArrayElement(newData, i, defaultState);
+                //UnsafeUtility.WriteArrayElement(newData, i, defaultState);
             }
 
             CellData[key] = new ChunkCellData
             {
                 data = data,
-                newData = newData,
+                //newData = newData,
                 m_Safety = AtomicSafetyHandle.Create(),
                 m_Length = ChunkCellCount,
             };
@@ -153,7 +136,7 @@ namespace Common.Grids
         {
             var data = CellData[key];
             UnsafeUtility.Free(data.data, Allocator.Persistent);
-            UnsafeUtility.Free(data.newData, Allocator.Persistent);
+            //UnsafeUtility.Free(data.newData, Allocator.Persistent);
         }
 
         public void LoadChunk(int chunkX, int chunkY)
@@ -170,16 +153,6 @@ namespace Common.Grids
             };
             Chunks.Add(key, chunkSection);
             LoadChunkData(key);
-
-            /*            int xx = chunkX * ChunkSize;
-                        int yy = chunkY * ChunkSize;
-                        for (int y = yy; y < yy + ChunkSize; y++)
-                        {
-                            for (int x = xx; x < xx + ChunkSize; x++)
-                            {
-                                Cells.Insert(x + y * ChunkSize, CellStateManager.Instance.Air.GetDefaultState());
-                            }
-                        }*/
         }
 
         public void UnloadChunk(int chunkX, int chunkY)
@@ -196,7 +169,6 @@ namespace Common.Grids
             var data = CellData[key];
             var array = NativeArrayUnsafeUtility.
                 ConvertExistingDataToNativeArray<CellStateData>(data.data, ChunkCellCount, Allocator.Temp);
-            //SharedDisposable<NativeArray<CellStateData>> disposable = array.Share(Allocator.None);
             NativeArrayUnsafeUtility.SetAtomicSafetyHandle(ref array, AtomicSafetyHandle.Create());
             return array;
         }
@@ -216,7 +188,6 @@ namespace Common.Grids
             {
                 int2 cellCoords = WorldCellToChunkCell(cellX, cellY);
                 return ReadState(chunkKey, cellCoords.x + cellCoords.y * ChunkSize);
-                //return Cells[index];
             }
 
             return new CellStateData();
@@ -247,7 +218,6 @@ namespace Common.Grids
         {
             int x = index % MapSize.x;
             int y = index / MapSize.y;
-            int2 cellCoords = WorldCellToChunkCell(x, y);
             long chunkKey = Int2ToChunkKey(CellToChunkCoords(x, y));
             return GetState(chunkKey, x, y);
         }
@@ -256,12 +226,15 @@ namespace Common.Grids
         {
             int x = index % MapSize.x;
             int y = index / MapSize.y;
-            int2 cellCoords = WorldCellToChunkCell(x, y);
             long chunkKey = Int2ToChunkKey(CellToChunkCoords(x, y));
             SetState(chunkKey, x, y, state);
         }
 
-
+        public void SetState(int cellX, int cellY, CellStateData state)
+        {
+            var key = Int2ToChunkKey(CellToChunkCoords(cellX, cellY));
+            SetState(key, cellX, cellY, state);
+        }
 
         public void SetState(long chunkKey, int cellX, int cellY, CellStateData state)
         {
@@ -286,35 +259,13 @@ namespace Common.Grids
                 chunkSection.IsDirty = true;
         }
 
-        public void SetStateChunk(long chunkKey, int x, int y, CellStateData state)
-        {
-            WriteState(chunkKey, x + y * ChunkSize, state);
-            if (Chunks.TryGetValue(chunkKey, out ChunkSection chunkSection))
-                chunkSection.IsDirty = true;
-        }
-
-        public ChunkSection GetChunkSection(int cellX, int cellY) => Chunks[XYToChunkKey(cellX / ChunkSize, cellY / ChunkSize)];
-
-        public ChunkSection CreateChunkSection(int chunkX, int chunkY)
-        {
-            long key = XYToChunkKey(chunkX, chunkY);
-            var indexes = FindChunkIndexes(chunkX, chunkY);
-            var chunkSection = new ChunkSection
-            {
-                ChunkSize = ChunkSize,
-                StartPos = FindChunkIndexes(chunkX, chunkY)
-            };
-            Chunks.Add(key, chunkSection);
-            return chunkSection;
-        }
-
         public unsafe void CopyNewToCells()
         {
             long num = (long)UnsafeUtility.SizeOf<CellStateData>() * (long)ChunkCellCount;
             foreach (var pair in Chunks)
             {
                 var dataSrc = CellData[pair.Key];
-                UnsafeUtility.MemCpy(dataSrc.data, dataSrc.newData, num);
+                //UnsafeUtility.MemCpy(dataSrc.data, dataSrc.newData, num);
             }
         }
 
@@ -324,7 +275,7 @@ namespace Common.Grids
             foreach (var pair in Chunks)
             {
                 var dataSrc = CellData[pair.Key];
-                UnsafeUtility.MemCpy(dataSrc.newData, dataSrc.data, num);
+                //UnsafeUtility.MemCpy(dataSrc.newData, dataSrc.data, num);
             }
         }
 
@@ -410,7 +361,7 @@ namespace Common.Grids
                 indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
             };
             mesh.MarkDynamic();
-          
+
 
             NativeArray<Vector3> vertices = new NativeArray<Vector3>(chunkCellCount * 4, Allocator.TempJob);
             GenVerticiesJob verticiesJob = new GenVerticiesJob
@@ -502,22 +453,14 @@ namespace Common.Grids
 
         private void Start()
         {
-            //for (int i = 0; i < Size; i++)
-            //{
-                //ChunkMap.Cells[i] = CellStateManager.Instance.Air.GetDefaultState();
-            //}
         }
+
         private void OnDestroy()
         {
             ChunkMap.Cleanup();
             NewCells.Dispose();
             Mass.Dispose();
             NewMass.Dispose();
-
-        }
-
-        private void OnApplicationQuit()
-        {
         }
 
         public void Update()
@@ -526,60 +469,47 @@ namespace Common.Grids
 
             FallingLeft = !FallingLeft;
 
-            ChunkMap.CopyCellToNew();
-            //var newCells = ChunkMap.Cells.ToNativeArray();
-            //ChunkMap.Cells.CopyTo(NewCells);
             Mass.CopyTo(NewMass);
 
             JobHandle lastHandle = new();
             NativeArray<JobHandle> handles = new(ChunkMap.Chunks.Capacity, Allocator.Temp);
-            //var newCells = new NativeHashMap<int, CellStateData>(ChunkMap.Cells.Capacity, Allocator.Temp);
-            //var newCellsWriter = newCells.AsParallelWriter().;
-            var keyvalues = ChunkMap.Chunks.GetKeyArray(Allocator.Temp);
-            for (int i = 0; i < keyvalues.Length; i++)
+            var keyValues = ChunkMap.Chunks.GetKeyValueArrays(Allocator.Temp);
+            for (int i = 0; i < keyValues.Length; i++)
             {
-                
-                ChunkMap.Chunks.TryGetValue(keyvalues[i], out var chunkSection);
-                if (true)
+                ChunkCellsUpdateJob job = new ChunkCellsUpdateJob
                 {
-                    ChunkCellsUpdateJob job = new ChunkCellsUpdateJob
-                    {
-                        ChunkMap = ChunkMap,
-                        MaxCompression = MaxCompression,
-                        MaxMass = MaxMass,
-                        MinMass = MinMass,
-                        MaxMassSqr = MaxMassSqr,
-                        MaxSpeed = MaxSpeed,
-                        MinFlow = MinFlow,
-                        FallLeft = FallingLeft,
-                        //NewCells = NewCells,
-                        Mass = Mass,
-                        NewMass = NewMass,
-                        CellStatesById = CellStateManager.Instance.CellStatesBlobIdMap,
-                        CellStatesByName = CellStateManager.Instance.CellStatesBlobMap,
-                        Air = CellStateManager.Instance.Air.GetDefaultState(),
-                        ChunkKey = keyvalues[i],
-                        ChunkSection = chunkSection,
-                    };
-                    lastHandle = job.ScheduleParallel(ChunkSize * ChunkSize, 1, lastHandle);
-                    handles[i] = lastHandle;
-                }
+                    ChunkMap = ChunkMap,
+                    MaxCompression = MaxCompression,
+                    MaxMass = MaxMass,
+                    MinMass = MinMass,
+                    MaxMassSqr = MaxMassSqr,
+                    MaxSpeed = MaxSpeed,
+                    MinFlow = MinFlow,
+                    FallLeft = FallingLeft,
+                    Mass = Mass,
+                    NewMass = NewMass,
+                    CellStatesById = CellStateManager.Instance.CellStatesBlobIdMap,
+                    CellStatesByName = CellStateManager.Instance.CellStatesBlobMap,
+                    Air = CellStateManager.Instance.Air.GetDefaultState(),
+                    ChunkKey = keyValues.Keys[i],
+                    ChunkSection = keyValues.Values[i],
+                };
+                lastHandle = job.ScheduleParallel(ChunkMap.ChunkCellCount, 1, lastHandle);
+                handles[i] = lastHandle;
             }
             JobHandle.CompleteAll(handles);
             handles.Dispose();
 
-            ChunkMap.CopyNewToCells();
-            //ChunkMap.Cells.CopyFrom(NewCells, 0, ChunkMap.Cells.Length);
-            //NewCells.CopyTo(ChunkMap.Cells);
             NewMass.CopyTo(Mass);
-            
-            for (int i = 0; i < keyvalues.Length; i++)
+
+            for (int i = 0; i < keyValues.Length; i++)
             {
-                ChunkMap.Chunks.TryGetValue(keyvalues[i], out var chunkSection);
-                if (true)
+                var key = keyValues.Keys[i];
+                var chunkSection = keyValues.Values[i];
+                if (chunkSection.IsDirty)
                 {
                     chunkSection.IsDirty = false;
-                    var mesh = ChunkMeshes[keyvalues[i]].MeshFilter.mesh;
+                    var mesh = ChunkMeshes[key].MeshFilter.mesh;
                     var colors = mesh.colors;
                     int vertexIndex = 0;
 
@@ -588,27 +518,22 @@ namespace Common.Grids
                         for (int x = chunkSection.StartPos.x; x < chunkSection.StartPos.x + ChunkSize; x++)
                         {
                             int mapIndex = x + y * MapSize.x;
-                            //var state = ChunkMap.Cells[mapIndex];
-                            var state = ChunkMap.GetState(keyvalues[i], x, y);
+                            var state = ChunkMap.GetState(key, x, y);
                             if (!state.IsSolid)
                             {
                                 if (Mass[mapIndex] >= MinMass)
                                 {
                                     state = CellStateManager.Instance.Cells[1].GetDefaultState();
-                                    //SetState(mapIndex, CellStateManager.Instance.Cells[1].GetDefaultState());
                                 }
                                 else
                                 {
                                     state = CellStateManager.Instance.Cells[0].GetDefaultState();
-                                    //SetState(mapIndex, CellStateManager.Instance.Cells[0].GetDefaultState());
                                 }
-                                ChunkMap.SetState(keyvalues[i], x, y, state);
+                                ChunkMap.SetState(key, x, y, state);
                             }
                             else
                                 Mass[mapIndex] = 0f;
 
-                            // Get any updated values
-                            //state = ChunkMap.Cells[mapIndex];
                             if (state.Equals(CellStateManager.Instance.Cells[1].GetDefaultState()))
                                 SetColor(vertexIndex, Color.Lerp(Color.cyan, Color.blue, Mass[mapIndex]), colors);
                             else
@@ -619,7 +544,7 @@ namespace Common.Grids
                     mesh.colors = colors;
                 }
             }
-            keyvalues.Dispose();
+            keyValues.Dispose();
         }
 
         public Color Float4ToColor(float4 f4)
@@ -639,16 +564,6 @@ namespace Common.Grids
             colors[i + 1] = color;
             colors[i + 2] = color;
             colors[i + 3] = color;
-        }
-
-        public void GetTile(int tileX, int tileY)
-        {
-
-        }
-
-        public void LoadChunk()
-        {
-
         }
 
         public int GetCellId(int x, int y)
@@ -733,26 +648,7 @@ namespace Common.Grids
         {
             long key = ChunkMap.Int2ToChunkKey(ChunkMap.CellToChunkCoords(x, y));
             ChunkMap.SetState(key, x, y, state);
-            //ChunkMap.SetState(x, y, state);
-/*            long key = ChunkMap.Int2ToChunkKey(ChunkMap.CellToChunkCoords(x, y));
-            var data = ChunkMap.CellData[key];
-
-            int xx = x / ChunkSize;
-            int yy = y / ChunkSize;
-            int index = xx + yy * ChunkSize;
-            unsafe
-            {
-                UnsafeUtility.WriteArrayElement(data.data, index, state);
-            }*/
-
-/*            int id = GetCellId(x, y);
-            ChunkMap.Cells[id] = state;
-            long key = ChunkMap.Int2ToChunkKey(ChunkMap.CellToChunkCoords(x, y));
-            var chunk = ChunkMap.Chunks[key];
-            chunk.IsDirty = true;
-            ChunkMap.Chunks[key] = chunk;*/
         }
-
     }
 
     [BurstCompile]
@@ -775,8 +671,6 @@ namespace Common.Grids
 
         [ReadOnly] public CellStateData Air;
 
-        //[NativeDisableParallelForRestriction] [WriteOnly] public NativeArray<CellStateData> NewCells;
-
         [ReadOnly] public NativeArray<float> Mass;
         [NativeDisableParallelForRestriction] public NativeArray<float> NewMass;
 
@@ -791,7 +685,6 @@ namespace Common.Grids
             int x = index % ChunkMap.MapSize.x;
             int y = index / ChunkMap.MapSize.y;
 
-            //var state = ChunkMap.Cells[index];
             State = ChunkMap.GetState(ChunkKey, index);
             var stateSand = CellStatesByName.Value.CellStates["default:sand"];
             var stateWater = CellStatesByName.Value.CellStates["default:fresh_water"];
@@ -879,41 +772,32 @@ namespace Common.Grids
         {
             if (!InBounds(x, y - 1)) return;
 
-            int down = GetCellId(x, y - 1);
             if (!ChunkMap.GetState(x, y - 1).IsSolid)
             {
                 // Handle downwards movement
-                ChunkMap.SetNewState(x, y - 1, State);
-                ChunkMap.SetNewState(ChunkKey, x, y, Air);
-                //NewCells[down] = State;
-                //NewCells[index] = Air;
+                ChunkMap.SetState(x, y - 1, State);
+                ChunkMap.SetState(ChunkKey, x, y, Air);
                 m_HasChanged = true;
             }
             else
             {
                 if (FallLeft)
                 {
-                    int left = GetCellId(x - 1, y - 1);
                     if (InBounds(x - 1, y - 1) && !ChunkMap.GetState(x - 1, y - 1).IsSolid)
                     {
                         // Handle leftward movement
-                        ChunkMap.SetNewState(x - 1, y - 1, State);
-                        ChunkMap.SetNewState(ChunkKey, x, y, Air);
-                        //NewCells[left] = State;
-                        //NewCells[index] = Air;
+                        ChunkMap.SetState(x - 1, y - 1, State);
+                        ChunkMap.SetState(ChunkKey, x, y, Air);
                         m_HasChanged = true;
                     }
                 }
                 else
                 {
-                    int right = GetCellId(x + 1, y - 1);
                     if (InBounds(x + 1, y - 1) && !ChunkMap.GetState(x + 1, y - 1).IsSolid)
                     {
                         // Handle rightward movement
-                        ChunkMap.SetNewState(x + 1, y - 1, State);
-                        ChunkMap.SetNewState(ChunkKey, x, y, Air);
-                        //NewCells[right] = State;
-                        //NewCells[index] = Air;
+                        ChunkMap.SetState(x + 1, y - 1, State);
+                        ChunkMap.SetState(ChunkKey, x, y, Air);
                         m_HasChanged = true;
                     }
                 }
@@ -939,9 +823,5 @@ namespace Common.Grids
             y = math.clamp(y, 0, ChunkMap.MapSize.y - 1);
             return x + y * ChunkMap.MapSize.x;
         }
-
-        private long XYToKey(int x, int y) => (long)y << 32 | (long)x;
-
-        private Vector2Int KeyToXY(long key) => new((int)(key & 0xff), (int)(key >> 32));
     }
 }
