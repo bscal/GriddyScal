@@ -46,7 +46,7 @@ namespace Common.Grids.Cells
 
             ref var cellStatesIdMap = ref blobMapIdBuilder.ConstructRoot<CellStateIdMap>();
             var idMap = blobMapIdBuilder.AllocateHashMap(ref cellStatesIdMap.States, Cells.Length);
-            
+
 
             for (int i = 0; i < Cells.Length; i++)
             {

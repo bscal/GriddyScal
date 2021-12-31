@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -19,6 +21,263 @@ namespace Common.Grids
         public int ChunkSize;
         public int2 StartPos;
         public bool IsDirty, IsActive;
+    }
+
+    /// <summary>
+    /// A NativeArray implementation designed to be stored in NativeCollections.
+    /// I tried to include most of the saftely features.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// 
+    public unsafe struct ChunkArrayData<T> where T : struct
+    {
+        [NativeDisableUnsafePtrRestriction]
+        internal unsafe void* m_Data;
+        internal int m_Length;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        internal int m_MinIndex;
+        internal int m_MaxIndex;
+        internal AtomicSafetyHandle m_Safety;
+        [NativeSetClassTypeToNullOnSchedule]
+        internal DisposeSentinel m_DisposeSentinel;
+        static int s_StaticSafetyId;
+
+        [BurstDiscard]
+        static void AssignStaticSafetyId(ref AtomicSafetyHandle safetyHandle)
+        {
+            // static safety IDs are unique per-type, and should only be initialized the first time an instance of
+            // the type is created.
+            if (s_StaticSafetyId == 0)
+            {
+                s_StaticSafetyId = AtomicSafetyHandle.NewStaticSafetyId<ChunkArrayData<T>>();
+            }
+            AtomicSafetyHandle.SetStaticSafetyId(ref safetyHandle, s_StaticSafetyId);
+        }
+#endif
+
+        public unsafe ChunkArrayData(int length)
+        {
+            Allocate(length, true, Allocator.Persistent, out this);
+        }
+
+        public unsafe ChunkArrayData(T[] array)
+        {
+            if (array == null)
+            {
+                throw new ArgumentNullException("array");
+            }
+
+            Allocate(array.Length, false, Allocator.Persistent, out this);
+            Copy(array, this);
+        }
+
+        public unsafe ChunkArrayData(NativeArray<T> array)
+        {
+            if (array == null)
+            {
+                throw new ArgumentNullException("array");
+            }
+
+            Allocate(array.Length, false, Allocator.Persistent, out this);
+            Copy(array, this);
+        }
+
+        public unsafe NativeArray<T> ToNativeArray(Allocator allocator)
+        {
+            var array = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<T>(m_Data, m_Length, allocator);
+            NativeArrayUnsafeUtility.SetAtomicSafetyHandle(ref array, m_Safety);
+            return array;
+        }
+
+        public unsafe static void Copy(NativeArray<T> src, ChunkArrayData<T> dst)
+        {
+            AtomicSafetyHandle.CheckReadAndThrow(NativeArrayUnsafeUtility.GetAtomicSafetyHandle(src));
+            AtomicSafetyHandle.CheckWriteAndThrow(dst.m_Safety);
+            CheckCopyLengths(src.Length, dst.m_Length);
+            CheckCopyArguments(src.Length, 0, dst.m_Length, 0, src.Length);
+            UnsafeUtility.MemCpy(dst.m_Data, src.GetUnsafeReadOnlyPtr(), src.Length * UnsafeUtility.SizeOf<T>());
+        }
+
+        public unsafe static void Copy(ChunkArrayData<T> src, ChunkArrayData<T> dst)
+        {
+            AtomicSafetyHandle.CheckReadAndThrow(src.m_Safety);
+            AtomicSafetyHandle.CheckWriteAndThrow(dst.m_Safety);
+            CheckCopyLengths(src.m_Length, dst.m_Length);
+            CheckCopyArguments(src.m_Length, 0, dst.m_Length, 0, src.m_Length);
+            UnsafeUtility.MemCpy(dst.m_Data, src.m_Data, src.m_Length * UnsafeUtility.SizeOf<T>());
+        }
+
+        private void Copy(T[] src, ChunkArrayData<T> dst)
+        {
+            AtomicSafetyHandle.CheckWriteAndThrow(dst.m_Safety);
+            CheckCopyLengths(src.Length, m_Length);
+            Copy(src, 0, dst, 0, src.Length);
+        }
+
+        public unsafe static void Copy(T[] src, int srcIndex, ChunkArrayData<T> dst, int dstIndex, int length)
+        {
+            AtomicSafetyHandle.CheckWriteAndThrow(dst.m_Safety);
+            if (src == null)
+            {
+                throw new ArgumentNullException("src");
+            }
+
+            CheckCopyArguments(src.Length, srcIndex, dst.m_Length, dstIndex, length);
+            GCHandle gCHandle = GCHandle.Alloc(src, GCHandleType.Pinned);
+            IntPtr value = gCHandle.AddrOfPinnedObject();
+            UnsafeUtility.MemCpy((byte*)dst.m_Data + dstIndex * UnsafeUtility.SizeOf<T>(), (byte*)(void*)value + srcIndex * UnsafeUtility.SizeOf<T>(), length * UnsafeUtility.SizeOf<T>());
+            gCHandle.Free();
+        }
+
+        private unsafe static void Allocate(int length, bool clearMemory, Allocator allocator, out ChunkArrayData<T> chunkArrayData)
+        {
+            long totalSize = (long)UnsafeUtility.SizeOf<T>() * (long)length;
+            CheckAllocateArguments(length, allocator, totalSize);
+            chunkArrayData = default(ChunkArrayData<T>);
+            chunkArrayData.m_Data = UnsafeUtility.Malloc(totalSize, UnsafeUtility.AlignOf<T>(), allocator);
+            if (clearMemory)
+                UnsafeUtility.MemClear(chunkArrayData.m_Data, totalSize);
+            chunkArrayData.m_Length = length;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            chunkArrayData.m_MinIndex = 0;
+            chunkArrayData.m_MaxIndex = length - 1;
+            DisposeSentinel.Create(out chunkArrayData.m_Safety, out chunkArrayData.m_DisposeSentinel, 1, allocator);
+            AssignStaticSafetyId(ref chunkArrayData.m_Safety);
+#endif
+        }
+
+        public void Dispose()
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
+#endif
+
+            UnsafeUtility.Free(m_Data, Allocator.Persistent);
+            m_Data = null;
+            m_Length = 0;
+        }
+
+        public unsafe T this[int index]
+        {
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                CheckElementReadAccess(index);
+#endif
+                return UnsafeUtility.ReadArrayElement<T>(m_Data, index);
+            }
+            [WriteAccessRequired]
+            set
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                CheckElementWriteAccess(index);
+#endif
+                UnsafeUtility.WriteArrayElement(m_Data, index, value);
+            }
+        }
+
+        public bool IsCreated
+        {
+            get { return m_Data != null; }
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        private static void CheckCopyLengths(int srcLength, int dstLength)
+        {
+            if (srcLength != dstLength)
+            {
+                throw new ArgumentException("source and destination length must be the same");
+            }
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        private static void CheckCopyArguments(int srcLength, int srcIndex, int dstLength, int dstIndex, int length)
+        {
+            if (length < 0)
+            {
+                throw new ArgumentOutOfRangeException("length", "length must be equal or greater than zero.");
+            }
+
+            if (srcIndex < 0 || srcIndex > srcLength || (srcIndex == srcLength && srcLength > 0))
+            {
+                throw new ArgumentOutOfRangeException("srcIndex", "srcIndex is outside the range of valid indexes for the source NativeArray.");
+            }
+
+            if (dstIndex < 0 || dstIndex > dstLength || (dstIndex == dstLength && dstLength > 0))
+            {
+                throw new ArgumentOutOfRangeException("dstIndex", "dstIndex is outside the range of valid indexes for the destination NativeArray.");
+            }
+
+            if (srcIndex + length > srcLength)
+            {
+                throw new ArgumentException("length is greater than the number of elements from srcIndex to the end of the source NativeArray.", "length");
+            }
+
+            if (srcIndex + length < 0)
+            {
+                throw new ArgumentException("srcIndex + length causes an integer overflow");
+            }
+
+            if (dstIndex + length > dstLength)
+            {
+                throw new ArgumentException("length is greater than the number of elements from dstIndex to the end of the destination NativeArray.", "length");
+            }
+
+            if (dstIndex + length < 0)
+            {
+                throw new ArgumentException("dstIndex + length causes an integer overflow");
+            }
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        private static void CheckAllocateArguments(int length, Allocator allocator, long totalSize)
+        {
+            if (allocator <= Allocator.None)
+                throw new ArgumentException("Allocator must be Temp, TempJob or Persistent", "allocator");
+            if (length < 0)
+                throw new ArgumentOutOfRangeException("length", "Length must be >= 0");
+            if (!UnsafeUtility.IsBlittable<T>())
+                throw new ArgumentException(string.Format("{0} used in ChunkNativeData<{0}> must be blittable", typeof(T)));
+            //IsUnmanagedAndThrow();
+        }
+
+        [BurstDiscard]
+        internal static void IsUnmanagedAndThrow()
+        {
+            if (!UnsafeUtility.IsValidNativeContainerElementType<T>())
+            {
+                throw new InvalidOperationException($"{typeof(T)} used must be unmanaged (contain no managed types) and cannot itself be a native container type.");
+            }
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        private unsafe void CheckElementReadAccess(int index)
+        {
+            if (index < m_MinIndex || index > m_MaxIndex)
+                FailOutOfRangeError(index);
+            AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        private unsafe void CheckElementWriteAccess(int index)
+        {
+            if (index < m_MinIndex || index > m_MaxIndex)
+                FailOutOfRangeError(index);
+            AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        private void FailOutOfRangeError(int index)
+        {
+            if (index < m_Length && (m_MinIndex != 0 || m_MaxIndex != m_Length - 1))
+            {
+                throw new IndexOutOfRangeException($"Index {index} is out of restricted IJobParallelFor range [{m_MinIndex}...{m_MaxIndex}] in ReadWriteBuffer.\n" + "ReadWriteBuffers are restricted to only read & write the element at the job index. You can use double buffering strategies to avoid race conditions due to reading & writing in parallel to the same elements from a job.");
+            }
+
+            throw new IndexOutOfRangeException($"Index {index} is out of range of '{m_Length}' Length.");
+        }
     }
 
     public unsafe struct ChunkCellData
@@ -76,6 +335,38 @@ namespace Common.Grids
         }
     }
 
+    public struct ChunkedCellData
+    {
+        public const int SERIAL_VERSION = 1;
+
+        public ChunkArrayData<CellStateData> Cells;
+        public ChunkArrayData<float> Masses;
+        public ChunkArrayData<float> NewMasses;
+
+        ChunkedCellData(int length)
+        {
+            Cells = new(length);
+            Masses = new(length);
+            NewMasses = new(length);
+        }
+
+        public void Dispose()
+        {
+            Cells.Dispose();
+            Masses.Dispose();
+            NewMasses.Dispose();
+        }
+
+        public void Serialize()
+        {
+
+        }
+
+        public void Deserialize()
+        {
+
+        }
+    }
 
     public struct ChunkMap
     {
@@ -303,6 +594,7 @@ namespace Common.Grids
     [Serializable]
     public class ChunkMesh
     {
+        public GameObject GameObject;
         public MeshFilter MeshFilter;
         public MeshRenderer MeshRenderer;
         public BoxCollider Collider;
@@ -318,8 +610,10 @@ namespace Common.Grids
         public int Size;
         public ChunkMap ChunkMap;
         public Dictionary<long, ChunkMesh> ChunkMeshes;
+        public List<ChunkMesh> ChunkObjects;
 
         public GameObject ChunkPrefab;
+        public Mesh mesh;
 
         public float MaxMass = 1.0f;
         public float MaxMassSqr = 0;
@@ -344,6 +638,7 @@ namespace Common.Grids
             int2 chunkMapSize = new(MapSize.x / ChunkSize, MapSize.y / ChunkSize);
             Vector2Int ChunkSizes = new(ChunkSize, ChunkSize);
             ChunkMap = new ChunkMap(MapSize, chunkMapSize, chunksPerPlayer, ChunkSize, chunkCellCount, Size);
+            ChunkObjects = new(chunksPerPlayer);
 
 
             uint seed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
@@ -356,7 +651,7 @@ namespace Common.Grids
 
             UnityEngine.Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed} | ChunkSize: {ChunkSize}");
 
-            Mesh mesh = new Mesh
+            mesh = new Mesh
             {
                 indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
             };
@@ -441,6 +736,7 @@ namespace Common.Grids
 
                     ChunkMesh chunkMesh = new()
                     {
+                        GameObject = go,
                         MeshFilter = meshFilter,
                         MeshRenderer = meshRenderer,
                         Collider = collider,
@@ -473,6 +769,7 @@ namespace Common.Grids
 
             JobHandle lastHandle = new();
             NativeArray<JobHandle> handles = new(ChunkMap.Chunks.Capacity, Allocator.Temp);
+
             var keyValues = ChunkMap.Chunks.GetKeyValueArrays(Allocator.Temp);
             for (int i = 0; i < keyValues.Length; i++)
             {
@@ -545,6 +842,65 @@ namespace Common.Grids
                 }
             }
             keyValues.Dispose();
+        }
+
+        public ChunkMesh CreateChunkObject()
+        {
+            var go = Instantiate(ChunkPrefab, gameObject.transform);
+
+            var meshFilter = go.AddComponent<MeshFilter>();
+            meshFilter.mesh = mesh;
+
+            var meshRenderer = go.AddComponent<MeshRenderer>();
+            meshRenderer.material = Material;
+            meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            meshRenderer.receiveShadows = false;
+
+            var collider = go.AddComponent<BoxCollider>();
+            collider.size = new(ChunkSize, ChunkSize, .01f);
+
+            ChunkMesh chunkMesh = new()
+            {
+                GameObject = go,
+                MeshFilter = meshFilter,
+                MeshRenderer = meshRenderer,
+                Collider = collider,
+            };
+
+            return chunkMesh;
+        }
+
+        public ChunkMesh GetPooledChunkedObject()
+        {
+
+            ChunkMesh go;
+            if (ChunkObjects.Count > 0)
+            {
+                go = ChunkObjects[ChunkObjects.Count - 1];
+                ChunkObjects.RemoveAt(ChunkObjects.Count - 1);
+            }
+            else
+            {
+                go = CreateChunkObject();
+            }
+            return go;
+        }
+
+        public void ReturnPooledChunkedObject(int chunkX, int chunkY)
+        {
+            long key = XYToChunkKey(chunkX, chunkY);
+            if (ChunkMeshes.TryGetValue(key, out var chunkMesh))
+            {
+                ChunkMeshes.Remove(key);
+                ChunkObjects.Add(chunkMesh);
+            }
+        }
+
+        public void InitChunkObject(ChunkMesh chunkMesh, int chunkX, int chunkY)
+        {
+            chunkMesh.GameObject.name = $"Chunk({chunkX},{chunkY})";
+            chunkMesh.GameObject.transform.position = new Vector3(chunkX * ChunkSize, chunkY * ChunkSize);
+            ChunkMeshes.Add(XYToChunkKey(chunkX, chunkY), chunkMesh);
         }
 
         public Color Float4ToColor(float4 f4)
@@ -674,7 +1030,6 @@ namespace Common.Grids
         [ReadOnly] public NativeArray<float> Mass;
         [NativeDisableParallelForRestriction] public NativeArray<float> NewMass;
 
-        private bool m_HasChanged;
         private CellStateData State;
 
         public void Execute(int i)
@@ -696,12 +1051,6 @@ namespace Common.Grids
             {
                 SimulateFluid(x, y, index);
             }
-
-            if (m_HasChanged)
-            {
-                ChunkMap.Chunks.TryGetValue(ChunkKey, out ChunkSection chunk);
-                chunk.IsDirty = m_HasChanged;
-            }
         }
 
         private void SimulateFluid(int x, int y, int index)
@@ -719,7 +1068,6 @@ namespace Common.Grids
                 NewMass[index] -= flow;
                 NewMass[downId] += flow;
                 remainingMass -= flow;
-                m_HasChanged = true;
             }
             if (remainingMass <= 0)
                 return;
@@ -734,7 +1082,6 @@ namespace Common.Grids
                 NewMass[index] -= flow;
                 NewMass[leftId] += flow;
                 remainingMass -= flow;
-                m_HasChanged = true;
             }
 
             if (remainingMass <= 0)
@@ -749,7 +1096,6 @@ namespace Common.Grids
                 NewMass[index] -= flow;
                 NewMass[rightId] += flow;
                 remainingMass -= flow;
-                m_HasChanged = true;
             }
 
             if (remainingMass <= 0)
@@ -764,7 +1110,6 @@ namespace Common.Grids
                 flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
                 NewMass[index] -= flow;
                 NewMass[upId] += flow;
-                m_HasChanged = true;
             }
         }
 
@@ -777,7 +1122,6 @@ namespace Common.Grids
                 // Handle downwards movement
                 ChunkMap.SetState(x, y - 1, State);
                 ChunkMap.SetState(ChunkKey, x, y, Air);
-                m_HasChanged = true;
             }
             else
             {
@@ -788,7 +1132,6 @@ namespace Common.Grids
                         // Handle leftward movement
                         ChunkMap.SetState(x - 1, y - 1, State);
                         ChunkMap.SetState(ChunkKey, x, y, Air);
-                        m_HasChanged = true;
                     }
                 }
                 else
@@ -798,7 +1141,6 @@ namespace Common.Grids
                         // Handle rightward movement
                         ChunkMap.SetState(x + 1, y - 1, State);
                         ChunkMap.SetState(ChunkKey, x, y, Air);
-                        m_HasChanged = true;
                     }
                 }
             }
@@ -824,4 +1166,124 @@ namespace Common.Grids
             return x + y * ChunkMap.MapSize.x;
         }
     }
+
+    public class ChunkSerializer
+    {
+
+        // GameDir/Saves/WorldName/Chunks/{saved data}
+
+
+        public const string RootPath = "GameDir/Saves";
+        public const string ChunkSaveDir = "Chunks";
+
+        public readonly string WorldSaveDir;
+        public readonly string FullSavePath;
+
+        public GameObject ChunkPrefab;
+        public ChunkManager ChunkManager;
+
+        public ChunkSerializer(string worldName)
+        {
+            WorldSaveDir = worldName;
+            FullSavePath = Path.Combine(Application.dataPath, RootPath, WorldSaveDir, ChunkSaveDir);
+        }
+
+        public string GetChunkPath(int chunkX, int chunkY)
+        {
+            return Path.Combine(FullSavePath, $"{chunkX},{chunkY}");
+        }
+
+        public bool LoadChunk(int chunkX, int chunkY)
+        {
+            return true;
+        }
+
+        public bool SaveChunk(int chunkX, int chunkY)
+        {
+            return true;
+        }
+
+        public void SerializeGameObject(string path, GameObject chunkObject)
+        {
+
+        }
+
+    }
+
+    public class ChunkDataContainer
+    {
+        public readonly int SerialVersion;
+        public readonly int ChunkX;
+        public readonly int ChunkY;
+        public readonly int Length;
+
+        public readonly ChunkedCellData Data;
+    }
+
+    /*public struct ChunkUpdateState : IJobFor
+    {
+        [ReadOnly] private readonly static float4 WATER_BLUE = new();
+        [ReadOnly] private readonly static float4 WATER_CYAN = new();
+
+        [ReadOnly] ChunkMap ChunkMap;
+        [ReadOnly] ChunkSection ChunkSection;
+        [ReadOnly] long ChunkKey;
+        [ReadOnly] int ChunkSize;
+        [ReadOnly] int2 MapSize;
+        [ReadOnly] NativeKeyValueArrays<long, ChunkSection> ChunkKeyValues;
+
+        [ReadOnly] CellStateIdMap CellStateIdMap;
+        [ReadOnly] CellStatesBlobHashMap CellStateNameMap;
+
+        [NativeDisableParallelForRestriction] [WriteOnly] NativeArray<float4> MeshColors;
+
+        private FixedString32 m_CachedString;
+
+        public void Execute(int index)
+        {
+            if (ChunkSection.IsDirty)
+            {
+                ChunkSection.IsDirty = false;
+                int vertexIndex = 0;
+
+                for (int y = ChunkSection.StartPos.y; y < ChunkSection.StartPos.y + ChunkSize; y++)
+                {
+                    for (int x = ChunkSection.StartPos.x; x < ChunkSection.StartPos.x + ChunkSize; x++)
+                    {
+                        int mapIndex = x + y * MapSize.x;
+                        var state = ChunkMap.GetState(ChunkKey, x, y);
+                        if (!state.IsSolid)
+                        {
+                            if (Mass[mapIndex] >= MinMass)
+                            {
+                                state = CellStateNameMap.CellStates[new("Test")];
+                            }
+                            else
+                            {
+                                state = CellStateManager.Instance.Cells[0].GetDefaultState();
+                            }
+                            ChunkMap.SetState(ChunkKey, x, y, state);
+                        }
+                        else
+                            Mass[mapIndex] = 0f;
+
+                        if (state.Equals(CellStateManager.Instance.Cells[1].GetDefaultState()))
+                            SetColor(vertexIndex, math.lerp(Color.cyan, Color.blue, Mass[mapIndex]));
+                        else
+                            SetColor(vertexIndex, state.CellColor);
+                        vertexIndex += 4;
+                    }
+                }
+            }
+        }
+
+        private void SetColor(int vertexIndex, float4 color)
+        {
+            MeshColors[vertexIndex + 0] = color;
+            MeshColors[vertexIndex + 1] = color;
+            MeshColors[vertexIndex + 2] = color;
+            MeshColors[vertexIndex + 3] = color;
+        }
+
+    }*/
 }
