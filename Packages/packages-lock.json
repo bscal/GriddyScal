@@ -1,11 +1,10 @@
 {
   "dependencies": {
     "com.jacksondunstan.native-collections": {
-      "version": "https://github.com/jacksondunstan/NativeCollections.git",
+      "version": "file:com.jacksondunstan.native-collections@1ec2a38f25",
       "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "1ec2a38f2539ccbb72cfcb8f43a362f569e902a2"
+      "source": "embedded",
+      "dependencies": {}
     },
     "com.unity.2d.animation": {
       "version": "7.0.1",

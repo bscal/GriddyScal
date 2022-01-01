@@ -80,17 +80,17 @@ namespace Common.FluidSimulation.Cellular_Automata
                 if (rightClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:air"]);
+                        SetState(x, y, CellStateManager.Instance.States.Air.GetDefaultState());
                     else
-                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:stone"]);
+                        SetState(x, y, CellStateManager.Instance.States.Stone.GetDefaultState());
                 }
                 else if (leftClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:sand"]);
+                        SetState(x, y, CellStateManager.Instance.States.Sand.GetDefaultState());
                     else
                     {
-                        SetState(x, y, m_CellStateManagerRef.CellStatesBlobMap.Value.CellStates["default:fresh_water"]);
+                        SetState(x, y, CellStateManager.Instance.States.FreshWater.GetDefaultState());
                         SetMass(x, y, .5f);
                     }
                 }
@@ -236,10 +236,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                 NewCells = GridStates.NewStates,
                 Mass = Mass,
                 NewMass = NewMass,
-                CellStates = CellStateManager.Instance.CellStatesBlobIdMap,
-                Sand = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:sand"],
-                Air = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:air"],
-                Water = CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:fresh_water"],
+                CellStates = CellStateManager.Instance.CellStatesBlobMap,
                 Chunks = Grid.NativeChunkMap,
             };
             JobHandle handle = updateJob.Schedule(Grid.Size, 1);
@@ -257,14 +254,13 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public static readonly float4 CYAN = new(0f, 1f, 1f, 1f);
         [ReadOnly] public static readonly float4 BLUE = new(0f, 0f, 1f, 1f);
 
-        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
+        [ReadOnly] public BlobAssetReference<CellStateRegistryMap> CellStates;
         [ReadOnly] public float MinMass;
         public NativeArray<float> Mass;
         public NativeArray<CellStateData> States;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<float4> Colors;
 
-        [ReadOnly] public int FRESH_WATER;
-        [ReadOnly] public int AIR;
+        [ReadOnly] public CellStateData Air;
 
         public void Execute(int index)
         {
@@ -273,11 +269,11 @@ namespace Common.FluidSimulation.Cellular_Automata
             {
                 if (Mass[index] >= MinMass)
                 {
-                    States[index] = CellStates.Value.States[FRESH_WATER];
+                    States[index] = CellStates.Value.CellStates["default:fresh_water"];
                 }
                 else
                 {
-                    States[index] = CellStates.Value.States[AIR];
+                    States[index] = Air;
                 }
             }
             else
@@ -285,7 +281,7 @@ namespace Common.FluidSimulation.Cellular_Automata
 
             // Get any updated values
             state = States[index];
-            if (state.Equals(CellStates.Value.States[FRESH_WATER]))
+            if (state.Equals(CellStates.Value.CellStates["default:fresh_water"]))
                 SetColor(index, math.lerp(CYAN, BLUE, Mass[index]));
             else
                 SetColor(index, state.CellColor);
@@ -307,26 +303,25 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public int Width, Height;
         [ReadOnly] public bool FallLeft;
         [ReadOnly] public NativeArray<CellStateData> States;
-        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
+        [ReadOnly] public BlobAssetReference<CellStateRegistryMap> CellStates;
         [WriteOnly] [NativeDisableParallelForRestriction] public NativeArray<CellStateData> NewStates;
 
 
-        [ReadOnly] public int SAND;
-        [ReadOnly] public int AIR;
+        [ReadOnly] public CellStateData Air;
 
         public void Execute(int index)
         {
             int x = index % Width;
             int y = index / Width;
             // If downwards falling blocks (sand) are at the bottom of map, they have nowhere to go.
-            if (!InBounds(x, y - 1) || !States[index].Equals(CellStates.Value.States[SAND])) return;
+            if (!InBounds(x, y - 1) || !States[index].Equals(CellStates.Value.CellStates["default:sand"])) return;
 
             int down = GetCellId(x, y - 1);
             if (!States[down].IsSolid)
             {
                 // Handle downwards movement
                 NewStates[down] = States[index];
-                NewStates[index] = CellStates.Value.States[AIR];
+                NewStates[index] = Air;
             }
             else
             {
@@ -337,7 +332,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle leftward movement
                         NewStates[left] = States[index];
-                        NewStates[index] = CellStates.Value.States[AIR];
+                        NewStates[index] = Air;
                     }
                 }
                 else
@@ -347,7 +342,7 @@ namespace Common.FluidSimulation.Cellular_Automata
                     {
                         // Handle rightward movement
                         NewStates[right] = States[index];
-                        NewStates[index] = CellStates.Value.States[AIR];
+                        NewStates[index] = Air;
                     }
                 }
             }
@@ -481,7 +476,7 @@ namespace Common.FluidSimulation.Cellular_Automata
         [ReadOnly] public float MaxSpeed;
         [ReadOnly] public float MaxMassSqr;
         [ReadOnly] public bool FallLeft;
-        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStates;
+        [ReadOnly] public BlobAssetReference<CellStateRegistryMap> CellStates;
         [ReadOnly] public CellStateData Sand;
         [ReadOnly] public CellStateData Air;
         [ReadOnly] public CellStateData Water;

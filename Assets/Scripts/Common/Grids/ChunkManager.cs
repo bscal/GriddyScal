@@ -1,4 +1,5 @@
 ﻿using Common.Grids.Cells;
+using JacksonDunstan.NativeCollections;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,6 +19,7 @@ namespace Common.Grids
 
     public struct ChunkSection
     {
+        public NativeChunkedList<byte> c;
         public int ChunkSize;
         public int2 StartPos;
         public bool IsDirty, IsActive;
@@ -335,6 +337,13 @@ namespace Common.Grids
         }
     }
 
+    public struct CellData
+    {
+        public CellStateData state;
+        public float Mass;
+        public float NewMass;
+    }
+
     public struct ChunkedCellData
     {
         public const int SERIAL_VERSION = 1;
@@ -407,7 +416,7 @@ namespace Common.Grids
             var data = UnsafeUtility.Malloc(num, UnsafeUtility.AlignOf<CellStateData>(), Allocator.Persistent);
             //var newData = UnsafeUtility.Malloc(num, UnsafeUtility.AlignOf<CellStateData>(), Allocator.Persistent);
 
-            var defaultState = CellStateManager.Instance.Air.GetDefaultState();
+            var defaultState = CellStateManager.Instance.States.Air.GetDefaultState();
             for (int i = 0; i < ChunkCellCount; i++)
             {
                 UnsafeUtility.WriteArrayElement(data, i, defaultState);
@@ -484,11 +493,11 @@ namespace Common.Grids
             return new CellStateData();
         }
 
-        public CellStateData GetStateChunk(long chunkKey, int x, int y)
+        public CellStateData GetState(long chunkKey, int index)
         {
             if (Chunks.ContainsKey(chunkKey))
             {
-                return ReadState(chunkKey, x + y * ChunkSize);
+                return ReadState(chunkKey, index);
             }
 
             return new CellStateData();
@@ -498,11 +507,6 @@ namespace Common.Grids
         {
             long chunkKey = Int2ToChunkKey(CellToChunkCoords(cellX, cellY));
             return GetState(chunkKey, cellX, cellY);
-        }
-
-        public CellStateData GetState(long chunkKey, int index)
-        {
-            return GetState(chunkKey, index % MapSize.x, index / MapSize.y);
         }
 
         public CellStateData GetState(int index)
@@ -519,6 +523,13 @@ namespace Common.Grids
             int y = index / MapSize.y;
             long chunkKey = Int2ToChunkKey(CellToChunkCoords(x, y));
             SetState(chunkKey, x, y, state);
+        }
+
+        public void SetState(long chunkKey, int index, CellStateData state)
+        {
+            WriteState(chunkKey, index, state);
+            if (Chunks.TryGetValue(chunkKey, out ChunkSection chunkSection))
+                chunkSection.IsDirty = true;
         }
 
         public void SetState(int cellX, int cellY, CellStateData state)
@@ -785,9 +796,8 @@ namespace Common.Grids
                     FallLeft = FallingLeft,
                     Mass = Mass,
                     NewMass = NewMass,
-                    CellStatesById = CellStateManager.Instance.CellStatesBlobIdMap,
-                    CellStatesByName = CellStateManager.Instance.CellStatesBlobMap,
-                    Air = CellStateManager.Instance.Air.GetDefaultState(),
+                    CellStateMap = CellStateManager.Instance.CellStatesBlobMap,
+                    Air = CellStateManager.Instance.States.Air.GetDefaultState(),
                     ChunkKey = keyValues.Keys[i],
                     ChunkSection = keyValues.Values[i],
                 };
@@ -966,17 +976,17 @@ namespace Common.Grids
                 if (rightClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:air"]);
+                        SetState(x, y, CellStateManager.Instance.States.Air.GetDefaultState());
                     else
-                        SetState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:stone"]);
+                        SetState(x, y, CellStateManager.Instance.States.Stone.GetDefaultState());
                 }
                 else if (leftClicked)
                 {
                     if (shiftHeld)
-                        SetState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:sand"]);
+                        SetState(x, y, CellStateManager.Instance.States.Sand.GetDefaultState());
                     else
                     {
-                        SetState(x, y, CellStateManager.Instance.CellStatesBlobMap.Value.CellStates["default:fresh_water"]);
+                        SetState(x, y, CellStateManager.Instance.States.FreshWater.GetDefaultState());
                         SetMass(x, y, .5f);
                     }
                 }
@@ -1022,8 +1032,7 @@ namespace Common.Grids
         [ReadOnly] public float MaxMassSqr;
         [ReadOnly] public bool FallLeft;
 
-        [ReadOnly] public BlobAssetReference<CellStateIdMap> CellStatesById;
-        [ReadOnly] public BlobAssetReference<CellStatesBlobHashMap> CellStatesByName;
+        [ReadOnly] public BlobAssetReference<CellStateRegistryMap> CellStateMap;
 
         [ReadOnly] public CellStateData Air;
 
@@ -1041,8 +1050,9 @@ namespace Common.Grids
             int y = index / ChunkMap.MapSize.y;
 
             State = ChunkMap.GetState(ChunkKey, index);
-            var stateSand = CellStatesByName.Value.CellStates["default:sand"];
-            var stateWater = CellStatesByName.Value.CellStates["default:fresh_water"];
+
+            var stateSand = CellStateMap.Value.CellStates["default:sand"];
+            var stateWater = CellStateMap.Value.CellStates["default:fresh_water"];
             if (State.Equals(stateSand))
             {
                 SimulateSand(x, y, index);
