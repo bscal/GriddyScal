@@ -604,7 +604,10 @@ namespace Common.Grids
 
         public long XYToChunkKey(int x, int y) => (long)y << 32 | (long)x;
 
-        public int2 ChunkKeyToXY(long key) => new((int)(key & 0xff), (int)(key >> 32));
+        public int2 ChunkKeyToXY(long key)
+        {
+            return new((int)(key & 0xffL), (int)(key >> 32 & 0xffL));
+        }
 
         public int ChunkCellCoordToIndex(int chunkX, int chunkY) => chunkX + chunkY * ChunkSize;
 
@@ -1303,9 +1306,11 @@ namespace Common.Grids
         public NativeHashSet<long>.ParallelWriter updated;
 
         private CellStateData State;
+        private int2 ChunkCoords;
 
         public void ExecuteNext(long key, ChunkedCellData value)
         {
+            ChunkCoords = ChunkMap.ChunkKeyToXY(key);
             for (int y = 0; y < ChunkMap.ChunkSize; y++)
             {
                 for (int x = 0; x < ChunkMap.ChunkSize; x++)
@@ -1335,11 +1340,11 @@ namespace Common.Grids
             float flow;
             // Down
             int downId = ChunkMap.ChunkCellCoordToIndex(GetWrappedXY(x, y - 1));
-            int2 downChunkCoord = GetNewChunkKey(x, y - 1, ChunkKey);
+            int2 downChunkCoord = GetNewChunkKey(x, y - 1);
             long downChunkKey = ChunkMap.Int2ToChunkKey(downChunkCoord);
-            if (ChunkMap.TryGetData(downChunkKey, out var downData))
+            if (IsInsideChunkBounds(downChunkCoord) && ChunkMap.TryGetData(downChunkKey, out var downData))
             {
-                if (InBounds(x, y - 1) && !downData.Cells[downId].IsSolid)
+                if (!downData.Cells[downId].IsSolid)
                 {
                     flow = GetStableMass(remainingMass + downData.Masses[downId]) - downData.Masses[downId];
                     if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
@@ -1347,6 +1352,7 @@ namespace Common.Grids
                     value.NewMasses[index] = value.NewMasses[index] - flow;
                     downData.NewMasses[downId] = downData.NewMasses[downId] + flow;
                     remainingMass -= flow;
+                    updated.Add(downChunkKey);
                 }
                 if (remainingMass <= 0)
                     return;
@@ -1354,11 +1360,11 @@ namespace Common.Grids
 
             // Left
             int leftId = ChunkMap.ChunkCellCoordToIndex(GetWrappedXY(x - 1, y));
-            int2 leftChunkCoord = GetNewChunkKey(x - 1, y, ChunkKey);
+            int2 leftChunkCoord = GetNewChunkKey(x - 1, y);
             long leftChunkKey = ChunkMap.Int2ToChunkKey(leftChunkCoord);
-            if (ChunkMap.TryGetData(leftChunkKey, out var leftData))
+            if (IsInsideChunkBounds(leftChunkCoord) && ChunkMap.TryGetData(leftChunkKey, out var leftData))
             {
-                if (InBounds(x - 1, y) && !leftData.Cells[leftId].IsSolid)
+                if (!leftData.Cells[leftId].IsSolid)
                 {
                     flow = (value.Masses[index] - leftData.Masses[leftId]) / 4;
                     if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
@@ -1366,6 +1372,7 @@ namespace Common.Grids
                     value.NewMasses[index] = value.NewMasses[index] - flow;
                     leftData.NewMasses[leftId] = leftData.NewMasses[leftId] + flow;
                     remainingMass -= flow;
+                    updated.Add(leftChunkKey);
                 }
                 if (remainingMass <= 0)
                     return;
@@ -1373,11 +1380,11 @@ namespace Common.Grids
 
             // Right
             int rightId = ChunkMap.ChunkCellCoordToIndex(GetWrappedXY(x + 1, y));
-            int2 rightChunkCoord = GetNewChunkKey(x + 1, y, ChunkKey);
+            int2 rightChunkCoord = GetNewChunkKey(x + 1, y);
             long rightChunkKey = ChunkMap.Int2ToChunkKey(rightChunkCoord);
-            if (ChunkMap.TryGetData(rightChunkKey, out var rightData))
+            if (IsInsideChunkBounds(rightChunkCoord) && ChunkMap.TryGetData(rightChunkKey, out var rightData))
             {
-                if (InBounds(x + 1, y) && !rightData.Cells[rightId].IsSolid)
+                if (!rightData.Cells[rightId].IsSolid)
                 {
                     flow = (value.Masses[index] - rightData.Masses[rightId]) / 4;
                     if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
@@ -1386,6 +1393,7 @@ namespace Common.Grids
                     //SetMass(x + 1, y, GetNewMass(x + 1, y) + flow);
                     rightData.NewMasses[rightId] = rightData.NewMasses[rightId] + flow;
                     remainingMass -= flow;
+                    updated.Add(rightChunkKey);
                 }
                 if (remainingMass <= 0)
                     return;
@@ -1394,17 +1402,18 @@ namespace Common.Grids
 
             // Up
             int upId = ChunkMap.ChunkCellCoordToIndex(GetWrappedXY(x, y + 1));
-            int2 upChunkCoord = GetNewChunkKey(x, y + 1, ChunkKey);
+            int2 upChunkCoord = GetNewChunkKey(x, y + 1);
             long upChunkKey = ChunkMap.Int2ToChunkKey(upChunkCoord);
-            if (ChunkMap.TryGetData(upChunkKey, out var upData))
+            if (IsInsideChunkBounds(upChunkCoord) && ChunkMap.TryGetData(upChunkKey, out var upData))
             {
-                if (InBounds(x, y + 1) && !upData.Cells[upId].IsSolid)
+                if (!upData.Cells[upId].IsSolid)
                 {
                     flow = remainingMass - GetStableMass(remainingMass + upData.Masses[upId]);
                     if (flow > MinFlow) flow *= 0.5f; // Leads to smoother flow
                     flow = math.clamp(flow, 0, math.min(MaxSpeed, remainingMass));
                     value.NewMasses[index] = value.NewMasses[index] - flow;
                     upData.NewMasses[upId] = upData.NewMasses[upId] + flow;
+                    updated.Add(upChunkKey);
                 }
             }
         }
@@ -1445,48 +1454,47 @@ namespace Common.Grids
             }
         }
 
-        // TODO better way to do this
-        private int2 GetNewChunkKey(int x, int y, long originChunkKey)
+        private void SetState(long key, int x, int y, CellStateData state)
         {
-            int2 chunkCoord = ChunkMap.ChunkKeyToXY(originChunkKey);
-            if (x >= ChunkMap.ChunkSize)
-                chunkCoord.x = math.clamp(chunkCoord.x + 1, 0, ChunkMap.MapSizeInChunks.x);
-            else if (x < 0)
-                chunkCoord.x = math.clamp(chunkCoord.x - 1, 0, ChunkMap.MapSizeInChunks.x);
-            if (y >= ChunkMap.ChunkSize)
-                chunkCoord.y = math.clamp(chunkCoord.y + 1, 0, ChunkMap.MapSizeInChunks.y);
-            else if (y < 0)
-                chunkCoord.y = math.clamp(chunkCoord.y - 1, 0, ChunkMap.MapSizeInChunks.y);
-            return chunkCoord;
+            int index;
+/*            int rightId = ChunkMap.ChunkCellCoordToIndex(GetWrappedXY(x + 1, y));
+            int2 rightChunkCoord = GetNewChunkKey(x + 1, y, ChunkKey);
+            long rightChunkKey = ChunkMap.Int2ToChunkKey(rightChunkCoord);
+            if (ChunkMap.TryGetData(rightChunkKey, out var rightData))*/
+        }
+
+        private bool IsInsideChunkBounds(int2 chunkCoords)
+        {
+            return chunkCoords.x > -1 && chunkCoords.x <= ChunkMap.MapSizeInChunks.x && chunkCoords.y > -1 && chunkCoords.y <= ChunkMap.MapSizeInChunks.y;
+        }
+
+        private bool InBounds(int x, int y)
+        {
+            return x > -1 && x <= ChunkMap.MapSize.x && y > -1 && y <= ChunkMap.MapSize.y;
         }
 
         // TODO better way to do this
+        private int2 GetNewChunkKey(int x, int y)
+        {
+            int2 newChunkCoord = ChunkCoords.xy;
+            if (x < 0 || x >= ChunkMap.ChunkSize)
+                newChunkCoord.x += x / ChunkMap.ChunkSize + (x < 0 ? -1 : 0);
+            if (y < 0 || y >= ChunkMap.ChunkSize)
+                newChunkCoord.y += y / ChunkMap.ChunkSize + (y < 0 ? -1 : 0);
+            return newChunkCoord;// math.clamp(newChunkCoord, int2.zero, new(ChunkMap.ChunkSize, ChunkMap.ChunkSize));
+        }
+
         private int2 GetWrappedXY(int x, int y)
         {
             if (x < 0)
-                x = ChunkMap.ChunkSize;
+                x = ChunkMap.ChunkSize - 1;
             else if (x >= ChunkMap.ChunkSize)
                 x = 0;
             if (y < 0)
-                y = ChunkMap.ChunkSize;
+                y = ChunkMap.ChunkSize - 1;
             else if (y >= ChunkMap.ChunkSize)
                 y = 0;
             return new(x, y);
-        }
-
-        private float GetMass(int x, int y)
-        {
-            return ChunkMap.GetMass(x, y);
-        }
-
-        private float GetNewMass(int x, int y)
-        {
-            return ChunkMap.GetNewMass(x, y);
-        }
-
-        private void SetMass(int x, int y, float mass)
-        {
-            ChunkMap.SetMass(x, y, mass);
         }
 
         private float GetStableMass(float totalMass)
@@ -1495,18 +1503,6 @@ namespace Common.Grids
             if (totalMass <= 1) return 1;
             else if (totalMass < 2 * MaxMass + MaxCompression) return (MaxMassSqr + totalMass * MaxCompression) / (MaxMass + MaxCompression);
             else return (totalMass + MaxCompression) / 2;
-        }
-
-        private bool InBounds(int x, int y)
-        {
-            return x > -1 && y > -1 && x < ChunkMap.MapSize.x && y < ChunkMap.MapSize.y;
-        }
-
-        private int GetCellId(int x, int y)
-        {
-            x = math.clamp(x, 0, ChunkMap.MapSize.x - 1);
-            y = math.clamp(y, 0, ChunkMap.MapSize.y - 1);
-            return x + y * ChunkMap.MapSize.x;
         }
     }
 

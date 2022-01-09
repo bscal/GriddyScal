@@ -423,8 +423,8 @@ MonoBehaviour:
     x: 16
     y: 16
   MapSize:
-    x: 256
-    y: 256
+    x: 128
+    y: 128
   ChunkSize: 32
   Size: 0
   ChunkObjects: []
