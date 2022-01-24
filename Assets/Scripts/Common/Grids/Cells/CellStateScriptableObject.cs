@@ -8,7 +8,8 @@ using System;
 using Common.Utils;
 using System.Security.Cryptography;
 using System.Text;
-
+using MessagePack;
+using MessagePack.Formatters;
 
 namespace Common.Grids
 {
@@ -39,13 +40,25 @@ namespace Common.Grids
 
         public void OnBeforeSerialize()
         {
+            
         }
     }
 
-    public struct CellStateData : IEquatable<CellStateData>
+    public struct CellState2
     {
         public int Id;
         public float4 CellColor;
+        public bool IsSolid;
+    }
+
+    [MessagePackObject]
+    public struct CellStateData : IEquatable<CellStateData>
+    {
+        [Key(0)]
+        public int Id;
+        [Key(1)]
+        public float4 CellColor;
+        [Key(2)]
         public bool IsSolid;
 
         public bool Equals(CellStateData other) => Id == other.Id;

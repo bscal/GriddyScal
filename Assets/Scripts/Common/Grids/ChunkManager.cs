@@ -1,5 +1,7 @@
 ﻿using BovineLabs.Common.Collections;
 using Common.Grids.Cells;
+using MessagePack;
+using MessagePack.Formatters;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -375,6 +377,39 @@ namespace Common.Grids
         }
     }
 
+    //public class ChunkedCellDataFormatter : IMessagePackFormatter<ChunkedCellData>
+    //{
+/*        public ChunkedCellData Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)
+        {
+        }
+
+        public void Serialize(ref MessagePackWriter writer, ChunkedCellData value, MessagePackSerializerOptions options)
+        {
+            int arraySize = value.Cells.m_Length;
+            for (int i = 0; i < arraySize; i++)
+            {
+                MessagePackSerializer.Serialize<Ch>
+            }
+        }*/
+    //}
+
+    public struct SerializableChunk
+    {
+        public long Key;
+        public int X, Y;
+        public ChunkedCellData Data;
+
+        public static void Serialize()
+        {
+
+        }
+
+        public static void Deserialize()
+        {
+
+        }
+    }
+
     public struct ChunkMap
     {
         public int2 MapSize;
@@ -632,6 +667,7 @@ namespace Common.Grids
         public int2 MapSize;
         public int ChunkSize;
         public bool UseCustomSeed;
+        [ShowIf(ActionOnConditionFail.DontDraw, ConditionOperator.And, nameof(UseCustomSeed))]
         public uint Seed;
 
         [Header("Map Tile Data")]
@@ -672,13 +708,12 @@ namespace Common.Grids
             m_ChunkMap = new ChunkMap(MapSize, chunkMapSize, chunksPerPlayer, ChunkSize, chunkCellCount, m_Size);
             m_ChunkObjects = new(chunksPerPlayer);
 
-
-            uint seed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
-            m_Random = new Unity.Mathematics.Random(seed);
+            if (!UseCustomSeed) Seed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            m_Random = new Unity.Mathematics.Random(Seed);
 
             m_ChunkMeshes = new Dictionary<long, ChunkMesh>();
 
-            UnityEngine.Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {seed} | ChunkSize: {ChunkSize}");
+            UnityEngine.Debug.Log($"Generating TileMap[{MapSize.x}, {MapSize.y}]. Seed: {Seed} | ChunkSize: {ChunkSize}");
 
             m_Mesh = new Mesh
             {

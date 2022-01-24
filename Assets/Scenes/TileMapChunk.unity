@@ -426,18 +426,17 @@ MonoBehaviour:
     x: 128
     y: 128
   ChunkSize: 32
-  Size: 0
-  ChunkObjects: []
+  UseCustomSeed: 0
+  Seed: 0
+  TileSize: {x: 1, y: 1}
   ChunkPrefab: {fileID: 3266875475172960159, guid: 961c56adece2f244faab884e3226e25c, type: 3}
-  mesh: {fileID: 0}
+  ChunkLoadRadius: 2
   MaxMass: 1
   MaxMassSqr: 0
   MinMass: 0.005
   MaxCompression: 0.02
   MinFlow: 0.01
   MaxSpeed: 1
-  FallingLeft: 0
-  TileSize: {x: 1, y: 1}
 --- !u!1001 &97919455658726912
 PrefabInstance:
   m_ObjectHideFlags: 0
